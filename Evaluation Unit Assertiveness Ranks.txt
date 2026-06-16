@@ -1,0 +1,7 @@
+A：1H 2L 3M
+B：1H 2L 3M
+C：1H 2M 3L
+D：1M 2L 3H
+E：1H 2L 3M
+F：1H 2L 3M
+G: 1H 2L 3M
