@@ -7,11 +7,12 @@ export async function fetchFiles(): Promise<string[]> {
   return data.files as string[]
 }
 
-export async function fetchCSVData(filename: string): Promise<CSVData> {
-  const res = await fetch(`/api/data/${encodeURIComponent(filename)}`)
+export async function fetchCombinedData(filenames: string[]): Promise<CSVData> {
+  const param = filenames.map(encodeURIComponent).join(',')
+  const res = await fetch(`/api/data/combined?files=${param}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail ?? 'Failed to load CSV')
+    throw new Error(err.detail ?? 'Failed to load CSV data')
   }
   return res.json() as Promise<CSVData>
 }

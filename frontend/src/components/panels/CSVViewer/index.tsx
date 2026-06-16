@@ -1,17 +1,18 @@
 import { useState, useEffect, useMemo } from 'react'
-import { fetchFiles, fetchCSVData } from '../../../api/csv'
+import { fetchFiles, fetchCombinedData } from '../../../api/csv'
 import { FileSelector } from './FileSelector'
 import { FilterSidebar } from './FilterSidebar'
 import { DataTable } from './DataTable'
 import type { CSVData } from '../../../types'
+import { PLATFORM_COLORS } from '../../../types'
 
 export function CSVViewer() {
   const [files, setFiles] = useState<string[]>([])
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [csvData, setCsvData] = useState<CSVData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activeGroupIds, setActiveGroupIds] = useState<Set<string>>(new Set())
+  const [activeFilterKeys, setActiveFilterKeys] = useState<Set<string>>(new Set())
   const [columnSearch, setColumnSearch] = useState('')
 
   useEffect(() => {
@@ -20,46 +21,67 @@ export function CSVViewer() {
       .catch((e) => console.error('Failed to load file list:', e))
   }, [])
 
+  // Reload whenever selected files change
   useEffect(() => {
-    if (!selectedFile) return
+    if (selectedFiles.length === 0) {
+      setCsvData(null)
+      return
+    }
     setLoading(true)
     setError(null)
     setCsvData(null)
-    fetchCSVData(selectedFile)
+    fetchCombinedData(selectedFiles)
       .then((data) => {
         setCsvData(data)
-        setActiveGroupIds(new Set(data.questionGroups.map((g) => g.id)))
+        setActiveFilterKeys(new Set(data.columns.map((c) => c.filterKey)))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [selectedFile])
+  }, [selectedFiles])
 
-  const toggleGroup = (groupId: string) => {
-    setActiveGroupIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) next.delete(groupId)
-      else next.add(groupId)
-      return next
-    })
+  const toggleFile = (filename: string) => {
+    setSelectedFiles((prev) =>
+      prev.includes(filename) ? prev.filter((f) => f !== filename) : [...prev, filename],
+    )
   }
 
   const visibleColumnCount = useMemo(() => {
     if (!csvData) return 0
-    return csvData.columns.filter((c) => activeGroupIds.has(c.groupId)).length
-  }, [csvData, activeGroupIds])
+    return csvData.columns.filter((c) => activeFilterKeys.has(c.filterKey)).length
+  }, [csvData, activeFilterKeys])
+
+  const multiSource = (csvData?.sources?.length ?? 0) > 1
 
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
-      {/* Header */}
+      {/* Header bar */}
       <div className="flex items-center gap-3 px-4 h-10 border-b border-[#3c3c3c] bg-[#252526] flex-shrink-0">
         <FileSelector
           files={files}
-          selectedFile={selectedFile}
-          onSelect={setSelectedFile}
+          selectedFiles={selectedFiles}
+          onToggle={toggleFile}
         />
+
+        {/* Platform legend (shown when multiple sources loaded) */}
+        {multiSource && csvData && (
+          <div className="flex items-center gap-3 ml-2">
+            {csvData.sources.map((src) => (
+              <div key={src.filename} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: PLATFORM_COLORS[src.platform] }}
+                />
+                <span className="text-[11px]" style={{ color: PLATFORM_COLORS[src.platform] }}>
+                  {src.platform} ({src.rowCount})
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {csvData && (
           <span className="ml-auto text-[11px] text-gray-500">
-            {csvData.totalRows} rows · {visibleColumnCount} / {csvData.columns.length} columns
+            {csvData.totalRows} rows · {visibleColumnCount} / {csvData.columns.length} cols
           </span>
         )}
       </div>
@@ -68,13 +90,10 @@ export function CSVViewer() {
       <div className="flex flex-1 min-h-0">
         {csvData && (
           <FilterSidebar
+            columns={csvData.columns}
             questionGroups={csvData.questionGroups}
-            activeGroupIds={activeGroupIds}
-            onToggleGroup={toggleGroup}
-            onSelectAll={() =>
-              setActiveGroupIds(new Set(csvData.questionGroups.map((g) => g.id)))
-            }
-            onClearAll={() => setActiveGroupIds(new Set())}
+            activeFilterKeys={activeFilterKeys}
+            onSetFilterKeys={setActiveFilterKeys}
             columnSearch={columnSearch}
             onColumnSearchChange={setColumnSearch}
           />
@@ -94,15 +113,17 @@ export function CSVViewer() {
           {!loading && !error && !csvData && (
             <div className="flex h-full items-center justify-center flex-col gap-2 text-gray-600">
               <span className="text-3xl">📂</span>
-              <span className="text-sm">Select a CSV file above to begin</span>
+              <span className="text-sm">Select CSV files above to begin</span>
             </div>
           )}
           {!loading && !error && csvData && (
             <DataTable
               columns={csvData.columns}
               rows={csvData.rows}
-              activeGroupIds={activeGroupIds}
+              rowMeta={csvData.rowMeta}
+              activeFilterKeys={activeFilterKeys}
               columnSearch={columnSearch}
+              multiSource={multiSource}
             />
           )}
         </div>

@@ -3,21 +3,49 @@ export interface Column {
   index: number
   qId: string
   label: string
+  canonicalLabel: string
   importId: string
   groupId: string
+  groupLabel: string
+  unitId: string | null
+  subGroup: string | null
+  subKey: string | null
+  canonicalId: string
+  filterKey: string
+}
+
+export interface SubGroup {
+  id: string
+  label: string
+  colIds: string[]
 }
 
 export interface QuestionGroup {
   id: string
   label: string
   colIds: string[]
+  unitId: string | null
+  subGroups: SubGroup[]
+}
+
+export interface RowMeta {
+  source: string
+  platform: 'Sona' | 'Prolific'
+}
+
+export interface SourceInfo {
+  filename: string
+  platform: 'Sona' | 'Prolific'
+  rowCount: number
 }
 
 export interface CSVData {
   columns: Column[]
   rows: string[][]
+  rowMeta: RowMeta[]
   questionGroups: QuestionGroup[]
   totalRows: number
+  sources: SourceInfo[]
 }
 
 export type PanelType = 'csv-viewer'
@@ -25,4 +53,9 @@ export type PanelType = 'csv-viewer'
 export interface OpenPanel {
   instanceId: string
   type: PanelType
+}
+
+export const PLATFORM_COLORS: Record<string, string> = {
+  Sona: '#4fc3f7',
+  Prolific: '#ffb74d',
 }
