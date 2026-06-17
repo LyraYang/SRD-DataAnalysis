@@ -60,6 +60,7 @@ export function FilterSidebar({
   onToggleCollapse,
 }: FilterSidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [expandedSubGroups, setExpandedSubGroups] = useState<Set<string>>(new Set())
 
   const allFilterKeys = useCallback(
     () => new Set(columns.map((c) => c.filterKey)),
@@ -70,6 +71,13 @@ export function FilterSidebar({
     setExpandedGroups((prev) => {
       const next = new Set(prev)
       next.has(gid) ? next.delete(gid) : next.add(gid)
+      return next
+    })
+
+  const toggleSubGroupExpand = (sgKey: string) =>
+    setExpandedSubGroups((prev) => {
+      const next = new Set(prev)
+      next.has(sgKey) ? next.delete(sgKey) : next.add(sgKey)
       return next
     })
 
@@ -199,8 +207,70 @@ export function FilterSidebar({
 
               {isUnit && isExpanded &&
                 group.subGroups.map((sg) => {
-                  const sgKey = `${group.unitId}:${sg.id}`
-                  const sgChecked = activeFilterKeys.has(sgKey)
+                  const sgBaseKey = `${group.unitId}:${sg.id}`
+                  const hasCategories = sg.categories && sg.categories.length > 0
+                  const sgExpanded = expandedSubGroups.has(sgBaseKey)
+
+                  if (hasCategories) {
+                    // Quant sub-group: parent checkbox controls all 4 category filter keys
+                    const catKeys = sg.categories!.map((cat) => `${sgBaseKey}:${cat.id}`)
+                    const activeCatCount = catKeys.filter((k) => activeFilterKeys.has(k)).length
+                    const sgCatChecked = activeCatCount === catKeys.length && catKeys.length > 0
+                    const sgCatIndet = activeCatCount > 0 && activeCatCount < catKeys.length
+
+                    const toggleSgCats = () => {
+                      const next = new Set(activeFilterKeys)
+                      if (sgCatChecked) {
+                        catKeys.forEach((k) => next.delete(k))
+                      } else {
+                        catKeys.forEach((k) => next.add(k))
+                      }
+                      onSetFilterKeys(next)
+                    }
+
+                    return (
+                      <div key={sg.id}>
+                        <div className="flex items-center gap-1.5 pl-8 pr-3 py-1 hover:bg-[#2a2d2e] select-none">
+                          <Tri checked={sgCatChecked} indeterminate={sgCatIndet} onChange={toggleSgCats} />
+                          <button
+                            onClick={() => toggleSubGroupExpand(sgBaseKey)}
+                            className="text-gray-500 hover:text-gray-300 w-3 text-[10px] flex-shrink-0"
+                          >
+                            {sgExpanded ? '▾' : '▸'}
+                          </button>
+                          <span
+                            className="text-[11px] text-gray-400 flex-1 truncate cursor-pointer"
+                            onClick={toggleSgCats}
+                          >
+                            {sg.label}
+                          </span>
+                          <span className="text-[10px] text-gray-600 flex-shrink-0">{sg.colIds.length}</span>
+                        </div>
+                        {sgExpanded && sg.categories!.map((cat) => {
+                          const catKey = `${sgBaseKey}:${cat.id}`
+                          const catChecked = activeFilterKeys.has(catKey)
+                          return (
+                            <label
+                              key={cat.id}
+                              className="flex items-center gap-2 pl-14 pr-3 py-0.5 hover:bg-[#2a2d2e] cursor-pointer select-none"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={catChecked}
+                                onChange={() => toggleKey(catKey)}
+                                className="accent-[#007acc] w-3 h-3 flex-shrink-0"
+                              />
+                              <span className="text-[10px] text-gray-500 flex-1 truncate">{cat.label}</span>
+                              <span className="text-[10px] text-gray-600 flex-shrink-0">{cat.colIds.length}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )
+                  }
+
+                  // Non-Quant sub-group: single checkbox (Impression, Rank, Summary, etc.)
+                  const sgChecked = activeFilterKeys.has(sgBaseKey)
                   return (
                     <label
                       key={sg.id}
@@ -209,7 +279,7 @@ export function FilterSidebar({
                       <input
                         type="checkbox"
                         checked={sgChecked}
-                        onChange={() => toggleSubGroup(sgKey)}
+                        onChange={() => toggleSubGroup(sgBaseKey)}
                         className="accent-[#007acc] w-3 h-3 flex-shrink-0"
                       />
                       <span className="text-[11px] text-gray-400 flex-1 truncate">{sg.label}</span>

@@ -53,6 +53,36 @@ GROUP_ORDER = ["Metadata", "Pre-Survey", "Quality"] + [f"Unit_{u}" for u in UNIT
 # Desired display order for Summary sub-keys within each unit
 SUMMARY_KEY_ORDER = ["most-appropriate", "least-appropriate", "best", "worst", "difference"]
 
+# The three sub-groups whose 13 questions are split into construct categories
+QUANT_SUBGROUPS = {"High-Quant", "Low-Quant", "Mid-Quant"}
+
+# Maps sub_key position (1–13) within a Quant sub-group to one of 4 construct categories.
+# Derived by matching question text against the Likert-item table in the study materials.
+QUANT_CATEGORY: dict[str, str] = {
+    "1":  "ManipulationCheck",   # The robot sounded assertive
+    "2":  "Performance",         # I clearly understood what the robot wanted me to do
+    "3":  "Preference",          # I like the way the robot communicated
+    "4":  "Affect",              # I would trust the robot's guidance
+    "5":  "Performance",         # I would follow the robot's instructions
+    "6":  "ManipulationCheck",   # The robot sounded polite
+    "7":  "Preference",          # Communication style was appropriate for this situation
+    "8":  "Performance",         # I felt confident about what action to take
+    "9":  "Affect",              # The robot seemed competent
+    "10": "Affect",              # This instruction would make me feel safer
+    "11": "ManipulationCheck",   # The robot sounded controlling or pushy
+    "12": "Performance",         # Understanding this instruction required mental effort
+    "13": "ManipulationCheck",   # The robot sounded confident
+}
+
+CATEGORY_LABELS: dict[str, str] = {
+    "ManipulationCheck": "Manipulation Check",
+    "Performance":       "Performance",
+    "Affect":            "Affect / Social Perception",
+    "Preference":        "Preference",
+}
+
+CATEGORY_ORDER = ["ManipulationCheck", "Performance", "Affect", "Preference"]
+
 # User response scale: 1=Low, 2=Mid, 3=High
 _LEVEL_TO_NUM: dict[str, int] = {"H": 3, "M": 2, "L": 1}
 _NUM_TO_LEVEL: dict[int, str] = {v: k for k, v in _LEVEL_TO_NUM.items()}
@@ -208,8 +238,13 @@ def _make_col(
     else:
         canonical_id = f"{unit_id}_{sub_group}" if unit_id and sub_group else f"{group_id}_{name}"
 
+    # Construct category — only applies to the 13 Quant questions per condition
+    category: Optional[str] = None
+    if unit_id and sub_group in QUANT_SUBGROUPS and sub_key and sub_key.isdigit():
+        category = QUANT_CATEGORY.get(sub_key)
+
     if unit_id and sub_group:
-        filter_key = f"{unit_id}:{sub_group}"
+        filter_key = f"{unit_id}:{sub_group}:{category}" if category else f"{unit_id}:{sub_group}"
     elif group_id == "Quality":
         filter_key = "Quality"
     elif canonical_name:
@@ -256,6 +291,7 @@ def _make_col(
         "unitId": unit_id,
         "subGroup": sub_group,
         "subKey": sub_key,
+        "category": category,
         "canonicalId": canonical_id,
         "filterKey": filter_key,
         "expectedLevel": expected_level,
@@ -285,22 +321,42 @@ def _groups_from_columns(columns: list[dict]) -> list[dict]:
                     "id": sg,
                     "label": SUBGROUP_LABELS.get(sg, sg),
                     "colIds": [],
+                    "_categories": {},
                 }
             sg_map[sg]["colIds"].append(col["colId"])
+            # Collect construct categories within Quant sub-groups
+            cat = col.get("category")
+            if cat:
+                cat_map = sg_map[sg]["_categories"]
+                if cat not in cat_map:
+                    cat_map[cat] = {
+                        "id": cat,
+                        "label": CATEGORY_LABELS.get(cat, cat),
+                        "colIds": [],
+                    }
+                cat_map[cat]["colIds"].append(col["colId"])
+
+    def _finalize_sg_list(sg_raw_map: dict) -> list[dict]:
+        sg_list = sorted(
+            sg_raw_map.values(),
+            key=lambda s: SUBGROUP_ORDER.index(s["id"]) if s["id"] in SUBGROUP_ORDER else 99,
+        )
+        result = []
+        for sg in sg_list:
+            cats = sg.pop("_categories", {})
+            entry = dict(sg)
+            if cats:
+                entry["categories"] = [cats[c] for c in CATEGORY_ORDER if c in cats]
+            result.append(entry)
+        return result
 
     ordered = []
     for gid in GROUP_ORDER:
         if gid in groups_map:
             gdata = groups_map.pop(gid)
-            sg_list = sorted(
-                gdata["subGroups"].values(),
-                key=lambda s: SUBGROUP_ORDER.index(s["id"]) if s["id"] in SUBGROUP_ORDER else 99,
-            )
-            ordered.append({**gdata, "subGroups": sg_list})
-    # Append any groups not in GROUP_ORDER
+            ordered.append({**gdata, "subGroups": _finalize_sg_list(gdata["subGroups"])})
     for gdata in groups_map.values():
-        sg_list = list(gdata["subGroups"].values())
-        ordered.append({**gdata, "subGroups": sg_list})
+        ordered.append({**gdata, "subGroups": _finalize_sg_list(gdata["subGroups"])})
     return ordered
 
 

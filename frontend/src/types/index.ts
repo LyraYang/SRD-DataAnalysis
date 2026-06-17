@@ -11,16 +11,24 @@ export interface Column {
   unitId: string | null
   subGroup: string | null
   subKey: string | null
+  category: string | null
   canonicalId: string
   filterKey: string
   expectedLevel: string | null
   expectedValue: number | null
 }
 
+export interface CategoryGroup {
+  id: string
+  label: string
+  colIds: string[]
+}
+
 export interface SubGroup {
   id: string
   label: string
   colIds: string[]
+  categories?: CategoryGroup[]
 }
 
 export interface QuestionGroup {

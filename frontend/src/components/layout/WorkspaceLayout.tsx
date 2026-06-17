@@ -152,7 +152,7 @@ export function WorkspaceLayout() {
                             <button
                               onClick={() => addColumn(colIdx, panel.type)}
                               title="Split right"
-                              className="text-gray-600 hover:text-gray-300 p-0.5 rounded hover:bg-[#37373d] flex items-center"
+                              className="text-[#007acc] hover:text-[#4fc3f7] p-0.5 rounded hover:bg-[#37373d] flex items-center"
                             >
                               <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor">
                                 <rect x="1" y="1" width="4" height="11" rx="1" opacity="0.45"/>
@@ -164,7 +164,7 @@ export function WorkspaceLayout() {
                             <button
                               onClick={() => addRow(colIdx, rowIdx, panel.type)}
                               title="Split down"
-                              className="text-gray-600 hover:text-gray-300 p-0.5 rounded hover:bg-[#37373d] flex items-center"
+                              className="text-[#007acc] hover:text-[#4fc3f7] p-0.5 rounded hover:bg-[#37373d] flex items-center"
                             >
                               <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor">
                                 <rect x="1" y="1" width="11" height="4" rx="1" opacity="0.45"/>

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Column, RowMeta, SortConfig } from '../../../types'
 import { PLATFORM_COLORS } from '../../../types'
+import { computeRowValidity, VALIDITY_COLORS } from './validityUtils'
 
 interface DataTableProps {
   columns: Column[]
@@ -16,6 +17,7 @@ interface DataTableProps {
   columnValueFilters: Map<string, Set<string>>
   onColumnValueFilterChange: (canonicalId: string, values: Set<string> | null) => void
   wrapText: boolean
+  hideInvalid: boolean
 }
 
 export function DataTable({
@@ -30,6 +32,7 @@ export function DataTable({
   columnValueFilters,
   onColumnValueFilterChange,
   wrapText,
+  hideInvalid,
 }: DataTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [openFilterColId, setOpenFilterColId] = useState<string | null>(null)
@@ -49,9 +52,20 @@ export function DataTable({
     })
   }, [columns, activeFilterKeys, columnSearch])
 
+  // Pre-compute validity for every row (uses all columns, not just visible ones)
+  // Must be before filteredSortedIndices so hideInvalid can reference it
+  const rowValidity = useMemo(
+    () => rows.map((row) => computeRowValidity(row, columns)),
+    [rows, columns],
+  )
+
   // Filtered + sorted row indices
   const filteredSortedIndices = useMemo(() => {
     let indices = Array.from({ length: rows.length }, (_, i) => i)
+
+    if (hideInvalid) {
+      indices = indices.filter((i) => rowValidity[i].level !== 'critical')
+    }
 
     for (const [canonicalId, allowedVals] of columnValueFilters) {
       if (allowedVals.size === 0) return []
@@ -73,7 +87,7 @@ export function DataTable({
     }
 
     return indices
-  }, [rows, columns, columnValueFilters, sortConfig])
+  }, [rows, columns, columnValueFilters, sortConfig, hideInvalid, rowValidity])
 
   // Unique values for the currently open filter column
   const uniqueValues = useMemo(() => {
@@ -179,7 +193,15 @@ export function DataTable({
     )
   }
 
-  const colSpanTotal = visibleColumns.length + (multiSource ? 2 : 1)
+  // Frozen-column left offsets (px)
+  const PLAT_W = 8    // platform stripe (only when multiSource)
+  const DOT_W  = 20   // validity dot column
+  const NOTE_W = 120  // notes column
+  const dotLeft     = multiSource ? PLAT_W : 0
+  const noteLeft    = dotLeft + DOT_W
+  const rownumLeft  = noteLeft + NOTE_W
+
+  const colSpanTotal = visibleColumns.length + (multiSource ? 4 : 3)
 
   const renderRow = (origIdx: number, visIdx: number) => {
     const row = rows[origIdx]
@@ -187,6 +209,11 @@ export function DataTable({
     const isEven = visIdx % 2 === 0
     const rowBg = isEven ? '#1e1e1e' : '#252526'
     const platformColor = meta ? PLATFORM_COLORS[meta.platform] : undefined
+    const validity = rowValidity[origIdx]
+    const dotColor = VALIDITY_COLORS[validity.level]
+    const noteText = validity.notes.join('; ')
+    // Gray for minor notes on passing (green) rows so they don't alarm
+    const noteColor = validity.level === 'ok' && noteText ? '#6b7280' : dotColor
     return (
       <tr
         key={origIdx}
@@ -194,14 +221,38 @@ export function DataTable({
       >
         {multiSource && (
           <td
-            className="border border-[#3c3c3c] p-0 w-1"
-            style={{ backgroundColor: platformColor ?? rowBg }}
+            className="sticky z-10 border border-[#3c3c3c] p-0"
+            style={{ left: 0, width: PLAT_W, backgroundColor: platformColor ?? rowBg }}
             title={meta?.platform}
           />
         )}
+        {/* Validity dot */}
         <td
-          className="sticky left-0 z-10 border border-[#3c3c3c] px-2 text-center text-gray-600"
-          style={{ backgroundColor: rowBg }}
+          className="sticky z-10 border border-[#3c3c3c] text-center"
+          style={{ left: dotLeft, width: DOT_W, backgroundColor: rowBg }}
+          title={noteText || 'No issues'}
+        >
+          <span style={{ color: dotColor, fontSize: 10, lineHeight: 1 }}>●</span>
+        </td>
+        {/* Notes */}
+        <td
+          className="sticky z-10 border border-[#3c3c3c] px-1"
+          style={{ left: noteLeft, width: NOTE_W, maxWidth: NOTE_W, backgroundColor: rowBg }}
+          title={noteText}
+        >
+          {wrapText ? (
+            <div className="whitespace-normal break-words py-1 text-[9px]" style={{ color: noteColor }}>
+              {noteText}
+            </div>
+          ) : (
+            <div className="truncate text-[9px]" style={{ color: noteColor }}>
+              {noteText}
+            </div>
+          )}
+        </td>
+        <td
+          className="sticky z-10 border border-[#3c3c3c] px-2 text-center text-gray-600"
+          style={{ left: rownumLeft, backgroundColor: rowBg }}
         >
           {origIdx + 1}
         </td>
@@ -236,7 +287,7 @@ export function DataTable({
 
   return (
     <>
-      <div ref={containerRef} className="h-full overflow-auto">
+      <div ref={containerRef} className="h-full overflow-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-[#007acc] [&::-webkit-scrollbar-track]:bg-[#2d2d30]">
         <table
           className="border-collapse text-xs"
           style={{ minWidth: 'max-content', tableLayout: 'auto' }}
@@ -244,9 +295,28 @@ export function DataTable({
           <thead className="sticky top-0 z-20">
             <tr>
               {multiSource && (
-                <th className="sticky left-0 z-30 w-2 min-w-[0.5rem] border border-[#3c3c3c] bg-[#2d2d30]" />
+                <th
+                  className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30]"
+                  style={{ left: 0, width: PLAT_W, minWidth: PLAT_W }}
+                />
               )}
-              <th className="sticky left-0 z-30 w-10 min-w-[2.5rem] border border-[#3c3c3c] bg-[#2d2d30] px-2 py-2 text-center text-gray-500">
+              {/* Validity dot */}
+              <th
+                className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] text-center"
+                style={{ left: dotLeft, width: DOT_W, minWidth: DOT_W }}
+                title="Validity"
+              />
+              {/* Notes */}
+              <th
+                className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] px-1 py-1 text-left text-[9px] font-semibold text-gray-500 uppercase tracking-wider"
+                style={{ left: noteLeft, width: NOTE_W, minWidth: NOTE_W, maxWidth: NOTE_W }}
+              >
+                Notes
+              </th>
+              <th
+                className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] px-2 py-2 text-center text-gray-500"
+                style={{ left: rownumLeft, width: 40, minWidth: 40 }}
+              >
                 #
               </th>
               {visibleColumns.map((col) => {

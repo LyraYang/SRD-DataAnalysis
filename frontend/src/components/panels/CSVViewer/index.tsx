@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { fetchFiles, fetchCombinedData } from '../../../api/csv'
 import { FileSelector } from './FileSelector'
 import { FilterSidebar } from './FilterSidebar'
@@ -15,7 +16,8 @@ export function CSVViewer() {
   const [activeFilterKeys, setActiveFilterKeys] = useState<Set<string>>(new Set())
   const [columnSearch, setColumnSearch] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [wrapText, setWrapText] = useState(false)
+  const [wrapText, setWrapText] = useState(true)
+  const [hideInvalid, setHideInvalid] = useState(false)
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null)
   const [columnValueFilters, setColumnValueFilters] = useState<Map<string, Set<string>>>(new Map())
 
@@ -86,6 +88,84 @@ export function CSVViewer() {
 
   const multiSource = (csvData?.sources?.length ?? 0) > 1
 
+  const handleDownloadExcel = useCallback(() => {
+    if (!csvData) return
+
+    // Mirror DataTable's visibleColumns logic
+    const search = columnSearch.toLowerCase()
+    const visibleCols = csvData.columns.filter((col) => {
+      if (!activeFilterKeys.has(col.filterKey)) return false
+      if (!search) return true
+      return (
+        col.displayLabel.toLowerCase().includes(search) ||
+        col.canonicalLabel.toLowerCase().includes(search) ||
+        col.qId.toLowerCase().includes(search)
+      )
+    })
+
+    // Mirror DataTable's filteredSortedIndices logic
+    let indices = Array.from({ length: csvData.rows.length }, (_, i) => i)
+    for (const [canonicalId, allowedVals] of columnValueFilters) {
+      if (allowedVals.size === 0) { indices = []; break }
+      const col = csvData.columns.find((c) => c.canonicalId === canonicalId)
+      if (!col) continue
+      indices = indices.filter((i) => allowedVals.has(csvData.rows[i]?.[col.index] ?? ''))
+    }
+    if (sortConfig) {
+      const col = csvData.columns.find((c) => c.canonicalId === sortConfig.canonicalId)
+      if (col) {
+        const dir = sortConfig.dir === 'asc' ? 1 : -1
+        indices = [...indices].sort((a, b) => {
+          const av = csvData.rows[a]?.[col.index] ?? ''
+          const bv = csvData.rows[b]?.[col.index] ?? ''
+          return dir * av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
+        })
+      }
+    }
+
+    // Header row — append (H/3) annotation for Assertiveness-Rank columns
+    const headers = [
+      ...(multiSource ? ['Platform'] : []),
+      '#',
+      ...visibleCols.map((col) => {
+        let label = col.displayLabel
+        if (col.expectedLevel != null && col.expectedValue != null)
+          label += ` (${col.expectedLevel}/${col.expectedValue})`
+        return label
+      }),
+    ]
+
+    // Data rows
+    const dataRows = indices.map((origIdx) => {
+      const row = csvData.rows[origIdx]
+      const meta = csvData.rowMeta[origIdx]
+      return [
+        ...(multiSource ? [meta?.platform ?? ''] : []),
+        origIdx + 1,
+        ...visibleCols.map((col) => row?.[col.index] ?? ''),
+      ]
+    })
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+
+    // Auto column widths (cap at 40 chars)
+    ws['!cols'] = headers.map((h, i) => {
+      const maxLen = Math.max(
+        String(h).length,
+        ...dataRows.slice(0, 200).map((r) => String(r[i] ?? '').length),
+      )
+      return { wch: Math.min(maxLen + 2, 42) }
+    })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Data')
+
+    const stem = selectedFiles.length === 1
+      ? selectedFiles[0].replace(/\.csv$/i, '')
+      : 'combined'
+    XLSX.writeFile(wb, `${stem}_export.xlsx`)
+  }, [csvData, activeFilterKeys, columnSearch, columnValueFilters, sortConfig, multiSource, selectedFiles])
+
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
       {/* Header bar */}
@@ -121,9 +201,35 @@ export function CSVViewer() {
             Wrap
           </label>
         )}
+        {/* Hide invalid rows toggle */}
+        {csvData && (
+          <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideInvalid}
+              onChange={(e) => setHideInvalid(e.target.checked)}
+              className="accent-[#007acc] w-3 h-3"
+            />
+            <span className={hideInvalid ? 'text-[#f87171]' : undefined}>Hide invalid</span>
+          </label>
+        )}
 
         {csvData && (
-          <span className="ml-auto text-[11px] text-gray-500">
+          <button
+            onClick={handleDownloadExcel}
+            title="Download visible, filtered, sorted data as Excel"
+            className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[11px] text-[#007acc] border border-[#007acc] rounded hover:bg-[#007acc] hover:text-white transition-colors"
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor">
+              <path d="M5.5 7.5 L2 4 H4 V1 H7 V4 H9 Z"/>
+              <rect x="1" y="9" width="9" height="1.2" rx="0.5"/>
+            </svg>
+            Export
+          </button>
+        )}
+
+        {csvData && (
+          <span className="text-[11px] text-gray-500">
             {filteredRowCount !== csvData.totalRows ? (
               <span>
                 <span className="text-gray-300">{filteredRowCount}</span>
@@ -194,6 +300,7 @@ export function CSVViewer() {
               columnValueFilters={columnValueFilters}
               onColumnValueFilterChange={handleColumnValueFilterChange}
               wrapText={wrapText}
+              hideInvalid={hideInvalid}
             />
           )}
         </div>
