@@ -4,6 +4,7 @@ export interface Column {
   qId: string
   label: string
   canonicalLabel: string
+  displayLabel: string
   importId: string
   groupId: string
   groupLabel: string
@@ -46,6 +47,11 @@ export interface CSVData {
   questionGroups: QuestionGroup[]
   totalRows: number
   sources: SourceInfo[]
+}
+
+export interface SortConfig {
+  canonicalId: string
+  dir: 'asc' | 'desc'
 }
 
 export type PanelType = 'csv-viewer'

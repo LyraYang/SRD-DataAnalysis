@@ -1,7 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Column, QuestionGroup } from '../../../types'
 
-// Checkbox that supports indeterminate state
+function FilterIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M1.5 2.5A.5.5 0 0 1 2 2h12a.5.5 0 0 1 .354.854L10 9.207V13.5a.5.5 0 0 1-.777.416l-3-2A.5.5 0 0 1 6 11.5V9.207L1.646 2.854A.5.5 0 0 1 1.5 2.5z" />
+    </svg>
+  )
+}
+
 function Tri({
   checked,
   indeterminate,
@@ -33,6 +45,8 @@ interface FilterSidebarProps {
   onSetFilterKeys: (keys: Set<string>) => void
   columnSearch: string
   onColumnSearchChange: (v: string) => void
+  collapsed: boolean
+  onToggleCollapse: () => void
 }
 
 export function FilterSidebar({
@@ -42,6 +56,8 @@ export function FilterSidebar({
   onSetFilterKeys,
   columnSearch,
   onColumnSearchChange,
+  collapsed,
+  onToggleCollapse,
 }: FilterSidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
@@ -59,14 +75,12 @@ export function FilterSidebar({
 
   const setKeys = (keys: Set<string>) => onSetFilterKeys(new Set(keys))
 
-  // Toggle a single filter key
   const toggleKey = (key: string) => {
     const next = new Set(activeFilterKeys)
     next.has(key) ? next.delete(key) : next.add(key)
     onSetFilterKeys(next)
   }
 
-  // Toggle all filter keys belonging to a group
   const toggleGroupKeys = (groupColIds: string[]) => {
     const groupCols = columns.filter((c) => groupColIds.includes(c.colId))
     const keys = [...new Set(groupCols.map((c) => c.filterKey))]
@@ -80,20 +94,40 @@ export function FilterSidebar({
     onSetFilterKeys(next)
   }
 
-  // Toggle a sub-group filter key
   const toggleSubGroup = (key: string) => toggleKey(key)
-
-  // Toggle an individual column's filter key
   const toggleCol = (col: Column) => toggleKey(col.filterKey)
 
   const visibleCount = columns.filter((c) => activeFilterKeys.has(c.filterKey)).length
+
+  if (collapsed) {
+    return (
+      <div className="w-7 flex-shrink-0 bg-[#252526] border-r border-[#3c3c3c] flex flex-col items-center pt-2">
+        <button
+          onClick={onToggleCollapse}
+          title="Expand filter panel"
+          className="text-gray-500 hover:text-gray-300 w-6 h-6 flex items-center justify-center rounded hover:bg-[#37373d]"
+        >
+          <FilterIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="w-56 flex-shrink-0 bg-[#252526] border-r border-[#3c3c3c] flex flex-col h-full">
       {/* Header */}
       <div className="px-3 pt-3 pb-2 border-b border-[#3c3c3c]">
-        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          Columns
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            Columns
+          </span>
+          <button
+            onClick={onToggleCollapse}
+            title="Collapse filter panel"
+            className="text-gray-600 hover:text-gray-300 w-5 h-5 flex items-center justify-center rounded hover:bg-[#37373d]"
+          >
+            <FilterIcon className="w-3 h-3" />
+          </button>
         </div>
         <input
           type="text"
@@ -130,7 +164,6 @@ export function FilterSidebar({
           const isUnit = group.unitId != null
           const isExpanded = expandedGroups.has(group.id)
 
-          // Determine group check state
           const groupCols = columns.filter((c) => group.colIds.includes(c.colId))
           const groupKeys = [...new Set(groupCols.map((c) => c.filterKey))]
           const activeCount = groupKeys.filter((k) => activeFilterKeys.has(k)).length
@@ -139,7 +172,6 @@ export function FilterSidebar({
 
           return (
             <div key={group.id}>
-              {/* Group header row */}
               <div className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-[#2a2d2e] select-none">
                 <Tri
                   checked={groupChecked}
@@ -165,28 +197,27 @@ export function FilterSidebar({
                 </span>
               </div>
 
-              {/* Unit group: show sub-group checkboxes when expanded */}
-              {isUnit && isExpanded && group.subGroups.map((sg) => {
-                const sgKey = `${group.unitId}:${sg.id}`
-                const sgChecked = activeFilterKeys.has(sgKey)
-                return (
-                  <label
-                    key={sg.id}
-                    className="flex items-center gap-2 pl-8 pr-3 py-1 hover:bg-[#2a2d2e] cursor-pointer select-none"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={sgChecked}
-                      onChange={() => toggleSubGroup(sgKey)}
-                      className="accent-[#007acc] w-3 h-3 flex-shrink-0"
-                    />
-                    <span className="text-[11px] text-gray-400 flex-1 truncate">{sg.label}</span>
-                    <span className="text-[10px] text-gray-600 flex-shrink-0">{sg.colIds.length}</span>
-                  </label>
-                )
-              })}
+              {isUnit && isExpanded &&
+                group.subGroups.map((sg) => {
+                  const sgKey = `${group.unitId}:${sg.id}`
+                  const sgChecked = activeFilterKeys.has(sgKey)
+                  return (
+                    <label
+                      key={sg.id}
+                      className="flex items-center gap-2 pl-8 pr-3 py-1 hover:bg-[#2a2d2e] cursor-pointer select-none"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sgChecked}
+                        onChange={() => toggleSubGroup(sgKey)}
+                        className="accent-[#007acc] w-3 h-3 flex-shrink-0"
+                      />
+                      <span className="text-[11px] text-gray-400 flex-1 truncate">{sg.label}</span>
+                      <span className="text-[10px] text-gray-600 flex-shrink-0">{sg.colIds.length}</span>
+                    </label>
+                  )
+                })}
 
-              {/* Metadata / Pre-Survey: show individual column checkboxes when expanded */}
               {!isUnit && isExpanded && (group.id === 'Metadata' || group.id === 'Pre-Survey') &&
                 groupCols.map((col) => {
                   const colChecked = activeFilterKeys.has(col.filterKey)
@@ -202,11 +233,10 @@ export function FilterSidebar({
                         onChange={() => toggleCol(col)}
                         className="accent-[#007acc] w-3 h-3 flex-shrink-0"
                       />
-                      <span className="text-[11px] text-gray-400 flex-1 truncate">{col.qId}</span>
+                      <span className="text-[11px] text-gray-400 flex-1 truncate">{col.displayLabel}</span>
                     </label>
                   )
-                })
-              }
+                })}
             </div>
           )
         })}

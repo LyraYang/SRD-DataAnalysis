@@ -50,6 +50,19 @@ SUBGROUP_LABELS = {
 
 GROUP_ORDER = ["Metadata", "Pre-Survey", "Quality"] + [f"Unit_{u}" for u in UNIT_LETTERS]
 
+# Desired display order for Summary sub-keys within each unit
+SUMMARY_KEY_ORDER = ["most-appropriate", "least-appropriate", "best", "worst", "difference"]
+
+# Maps Spring2026 Q IDs to the canonical column names used in Summer/Prolific CSVs
+_SPRING_PRESURVEY_CANONICAL: dict[str, str] = {
+    "Q1": "English Proficiency",
+    "Q2": "Age",
+    "Q3": "Gender",
+    "Q4": "Perceptual Ability",
+    "Q68": "Audio check",
+    "Q70": "Open feedback",
+}
+
 # Spring2026 format: each scenario block has 50 questions in a fixed order.
 # Maps position_in_block → (sub_group, sub_key)
 _SPRING_BLOCK_MAP: list[tuple[str, Optional[str]]] = []
@@ -154,18 +167,40 @@ def _make_col(
     unit_id: Optional[str],
     sub_group: Optional[str],
     sub_key: Optional[str],
+    canonical_name: Optional[str] = None,
 ) -> dict:
+    name = canonical_name if canonical_name else qid
     if sub_key:
-        canonical_id = f"{unit_id}_{sub_group}_{sub_key}" if unit_id else f"{group_id}_{qid}"
+        canonical_id = f"{unit_id}_{sub_group}_{sub_key}" if unit_id else f"{group_id}_{name}"
     else:
-        canonical_id = f"{unit_id}_{sub_group}" if unit_id and sub_group else f"{group_id}_{qid}"
+        canonical_id = f"{unit_id}_{sub_group}" if unit_id and sub_group else f"{group_id}_{name}"
 
     if unit_id and sub_group:
         filter_key = f"{unit_id}:{sub_group}"
     elif group_id == "Quality":
         filter_key = "Quality"
+    elif canonical_name:
+        filter_key = f"{group_id}:{canonical_name}"
     else:
         filter_key = f"{group_id}:col_{i}"
+
+    # Short display label for column headers (question label, not full question text).
+    # New-format files use descriptive Q IDs (e.g. "A-best(1H2L3M)") — preserve as-is.
+    # Spring-format unit columns get a reconstructed canonical label.
+    # Pre-survey/metadata/quality use canonical_name or qid.
+    if unit_id and sub_group:
+        if re.match(r"^[A-G][\s-]", qid, re.IGNORECASE):
+            display_label = qid  # new format: keeps parenthetical info like (1H2L3M)
+        elif sub_group == "Summary" and sub_key:
+            display_label = f"{unit_id}-{sub_key}"
+        elif sub_key:
+            display_label = f"{unit_id}-{sub_group}_{sub_key}"
+        else:
+            display_label = f"{unit_id}-{sub_group}"
+    elif canonical_name:
+        display_label = canonical_name
+    else:
+        display_label = qid
 
     return {
         "colId": f"col_{i}",
@@ -173,6 +208,7 @@ def _make_col(
         "qId": qid,
         "label": label,
         "canonicalLabel": _strip_label(label),
+        "displayLabel": display_label,
         "importId": iid,
         "groupId": group_id,
         "groupLabel": group_label,
@@ -246,7 +282,8 @@ def _build_columns_new(q_ids, labels, import_ids) -> list[dict]:
                     unit_id, sub_group, sub_key,
                 )
             else:
-                col = _make_col(i, qid, label, iid, "Pre-Survey", "Pre-Survey", None, None, None)
+                # qid is already a descriptive name in the new format (e.g. "Gender")
+                col = _make_col(i, qid, label, iid, "Pre-Survey", "Pre-Survey", None, None, None, canonical_name=qid)
         columns.append(col)
     return columns
 
@@ -283,7 +320,8 @@ def _build_columns_spring(q_ids, labels, import_ids) -> list[dict]:
                 unit_id, sub_group, sub_key,
             )
         else:
-            col = _make_col(i, qid, label, iid, "Pre-Survey", "Pre-Survey", None, None, None)
+            canonical_name = _SPRING_PRESURVEY_CANONICAL.get(qid)
+            col = _make_col(i, qid, label, iid, "Pre-Survey", "Pre-Survey", None, None, None, canonical_name=canonical_name)
         columns.append(col)
     return columns
 
@@ -312,6 +350,12 @@ def _col_sort_key(col: dict) -> tuple:
             sg_rank = SUBGROUP_ORDER.index(sg)
         except ValueError:
             sg_rank = len(SUBGROUP_ORDER)
+        if sg == "Summary":
+            try:
+                sk_rank = SUMMARY_KEY_ORDER.index(sk)
+            except ValueError:
+                sk_rank = len(SUMMARY_KEY_ORDER)
+            return (g_rank, sg_rank, sk_rank, sk)
         key_num = int(sk) if sk.isdigit() else 0
         return (g_rank, sg_rank, key_num, sk)
 
@@ -357,13 +401,18 @@ def get_combined_data(files: str = ""):
             "rows": all_rows[3:],
         })
 
-    # Build unified column set: first occurrence of each canonicalId wins for metadata
+    # Build unified column set: first occurrence wins, but prefer new-format displayLabels
+    # for unit columns (they carry parenthetical study info like "(1H2L3M)" that Spring lacks).
     seen_canonical: dict[str, dict] = {}
     for fd in file_data:
         for col in fd["columns"]:
             cid = col["canonicalId"]
             if cid not in seen_canonical:
                 seen_canonical[cid] = col
+            elif col.get("unitId") and re.match(r"^[A-G][\s-]", col.get("qId", ""), re.IGNORECASE):
+                existing = seen_canonical[cid]
+                if not re.match(r"^[A-G][\s-]", existing.get("qId", ""), re.IGNORECASE):
+                    seen_canonical[cid] = {**existing, "displayLabel": col["displayLabel"]}
 
     unified_cols = sorted(seen_canonical.values(), key=_col_sort_key)
 
