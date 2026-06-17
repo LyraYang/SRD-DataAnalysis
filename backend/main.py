@@ -53,6 +53,39 @@ GROUP_ORDER = ["Metadata", "Pre-Survey", "Quality"] + [f"Unit_{u}" for u in UNIT
 # Desired display order for Summary sub-keys within each unit
 SUMMARY_KEY_ORDER = ["most-appropriate", "least-appropriate", "best", "worst", "difference"]
 
+# User response scale: 1=Low, 2=Mid, 3=High
+_LEVEL_TO_NUM: dict[str, int] = {"H": 3, "M": 2, "L": 1}
+_NUM_TO_LEVEL: dict[int, str] = {v: k for k, v in _LEVEL_TO_NUM.items()}
+
+
+def _load_assertiveness_ranks() -> dict[str, dict[str, tuple[str, int]]]:
+    """Parse 'Evaluation Unit Assertiveness Ranks.txt'.
+    Returns {unit: {clip_index_str: (level, expected_numeric_response)}}
+    e.g. {"F": {"1": ("H", 3), "2": ("L", 1), "3": ("M", 2)}}
+    """
+    txt = DATA_DIR.parent / "Evaluation Unit Assertiveness Ranks.txt"
+    result: dict[str, dict[str, tuple[str, int]]] = {}
+    if not txt.exists():
+        return result
+    with open(txt, encoding="utf-8-sig") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            m = re.match(r"^([A-G])\s*[：:]\s*(.+)$", line)
+            if not m:
+                continue
+            unit = m.group(1).upper()
+            ranks: dict[str, tuple[str, int]] = {}
+            for item in re.finditer(r"(\d)([HML])", m.group(2)):
+                idx, level = item.group(1), item.group(2).upper()
+                ranks[idx] = (level, _LEVEL_TO_NUM[level])
+            result[unit] = ranks
+    return result
+
+
+_ASSERTIVENESS_RANKS = _load_assertiveness_ranks()
+
 # Maps Spring2026 Q IDs to the canonical column names used in Summer/Prolific CSVs
 _SPRING_PRESURVEY_CANONICAL: dict[str, str] = {
     "Q1": "English Proficiency",
@@ -202,6 +235,14 @@ def _make_col(
     else:
         display_label = qid
 
+    # Assertiveness-Rank expected answer (from the lookup file)
+    expected_level: Optional[str] = None
+    expected_value: Optional[int] = None
+    if unit_id and sub_group == "Assertiveness-Rank" and sub_key:
+        rank_info = _ASSERTIVENESS_RANKS.get(unit_id, {}).get(sub_key)
+        if rank_info:
+            expected_level, expected_value = rank_info
+
     return {
         "colId": f"col_{i}",
         "index": i,
@@ -217,6 +258,8 @@ def _make_col(
         "subKey": sub_key,
         "canonicalId": canonical_id,
         "filterKey": filter_key,
+        "expectedLevel": expected_level,
+        "expectedValue": expected_value,
     }
 
 

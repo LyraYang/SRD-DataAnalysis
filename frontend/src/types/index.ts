@@ -13,6 +13,8 @@ export interface Column {
   subKey: string | null
   canonicalId: string
   filterKey: string
+  expectedLevel: string | null
+  expectedValue: number | null
 }
 
 export interface SubGroup {

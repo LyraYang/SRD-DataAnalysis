@@ -207,11 +207,20 @@ export function DataTable({
         </td>
         {visibleColumns.map((col) => {
           const cell = row?.[col.index] ?? ''
+          // Assertiveness-Rank match highlight
+          let cellBg: string | undefined
+          if (col.expectedValue != null && cell !== '') {
+            const numeric = parseInt(cell, 10)
+            cellBg = numeric === col.expectedValue
+              ? 'rgba(34,197,94,0.18)'   // green — correct
+              : 'rgba(239,68,68,0.18)'   // red — incorrect
+          }
           return (
             <td
               key={col.colId}
               title={cell}
               className="border border-[#3c3c3c] px-2 text-gray-300 max-w-[14rem]"
+              style={cellBg ? { backgroundColor: cellBg } : undefined}
             >
               {wrapText ? (
                 <div className="whitespace-normal break-words py-1 text-[11px]">{cell}</div>
@@ -265,6 +274,11 @@ export function DataTable({
                           <span className="truncate font-semibold text-gray-200 text-[10px]">
                             {col.displayLabel}
                           </span>
+                          {col.expectedLevel != null && col.expectedValue != null && (
+                            <span className="text-[10px] text-gray-400 font-normal flex-shrink-0">
+                              ({col.expectedLevel}/{col.expectedValue})
+                            </span>
+                          )}
                           {isActiveSort && (
                             <span className="text-[#007acc] text-[10px] flex-shrink-0">
                               {sortConfig?.dir === 'asc' ? '↑' : '↓'}
