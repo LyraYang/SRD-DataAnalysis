@@ -1,7 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import csv
 import re
+import sys
+import shutil
+import threading
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -9,13 +14,30 @@ app = FastAPI(title="SRD Data Analysis API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+# ---------------------------------------------------------------------------
+# Path resolution — works both in development and in a PyInstaller bundle
+# ---------------------------------------------------------------------------
+_FROZEN = getattr(sys, 'frozen', False)
+
+if _FROZEN:
+    # Running as a PyInstaller .exe; keep data next to the executable
+    BASE_DIR = Path(sys.executable).parent
+    _BUNDLE_DIR = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+else:
+    BASE_DIR = Path(__file__).parent.parent
+    _BUNDLE_DIR = None
+
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Static files: bundled under _MEIPASS/static, or the Vite build output in dev
+_STATIC_DIR = (_BUNDLE_DIR / "static") if _BUNDLE_DIR else (BASE_DIR / "frontend" / "dist")
 
 QUALTRICS_METADATA = {
     "StartDate", "EndDate", "Status", "IPAddress", "Progress",
@@ -577,3 +599,53 @@ def get_csv_data(filename: str):
         "totalRows": len(data_rows),
         "sources": [{"filename": filename, "platform": platform, "rowCount": len(data_rows)}],
     }
+
+
+@app.post("/api/upload")
+async def upload_csv(request: Request, filename: str = "upload.csv"):
+    if not filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+    safe_name = Path(filename).name
+    (DATA_DIR / safe_name).write_bytes(await request.body())
+    return {"filename": safe_name}
+
+
+# ---------------------------------------------------------------------------
+# Static file serving (Vite build / bundled mode)
+# ---------------------------------------------------------------------------
+if _STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Entry point — used when running as a PyInstaller bundle or directly
+# ---------------------------------------------------------------------------
+_PORT = 8765
+
+
+if __name__ == "__main__":
+    import socket
+    import uvicorn
+
+    # If another instance is already running, just open the browser and exit
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _sock:
+        if _sock.connect_ex(("127.0.0.1", _PORT)) == 0:
+            webbrowser.open(f"http://127.0.0.1:{_PORT}")
+            sys.exit(0)
+
+    if _FROZEN:
+        # CSV files dragged onto the .exe are passed as command-line arguments
+        for arg in sys.argv[1:]:
+            p = Path(arg)
+            if p.exists() and p.suffix.lower() == ".csv":
+                shutil.copy2(p, DATA_DIR / p.name)
+
+        # Open the browser once the server is up
+        def _open_browser() -> None:
+            import time
+            time.sleep(1.5)
+            webbrowser.open(f"http://127.0.0.1:{_PORT}")
+
+        threading.Thread(target=_open_browser, daemon=True).start()
+
+    uvicorn.run(app, host="127.0.0.1", port=_PORT, log_level="warning")

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { fetchFiles, fetchCombinedData } from '../../../api/csv'
+import { fetchFiles, fetchCombinedData, uploadCSV } from '../../../api/csv'
 import { FileSelector } from './FileSelector'
 import { FilterSidebar } from './FilterSidebar'
 import { DataTable } from './DataTable'
@@ -14,6 +14,9 @@ export function CSVViewer() {
   const [csvData, setCsvData] = useState<CSVData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const dragDepth = useRef(0)
   const [activeFilterKeys, setActiveFilterKeys] = useState<Set<string>>(new Set())
   const [columnSearch, setColumnSearch] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -52,6 +55,37 @@ export function CSVViewer() {
       prev.includes(filename) ? prev.filter((f) => f !== filename) : [...prev, filename],
     )
   }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepth.current++
+    if (dragDepth.current === 1) setDragActive(true)
+  }
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepth.current--
+    if (dragDepth.current === 0) setDragActive(false)
+  }
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault() }
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepth.current = 0
+    setDragActive(false)
+    const csvFiles = Array.from(e.dataTransfer.files).filter((f) =>
+      f.name.toLowerCase().endsWith('.csv'),
+    )
+    if (csvFiles.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of csvFiles) await uploadCSV(file)
+      setFiles(await fetchFiles())
+    } catch (err) {
+      console.error('Upload failed:', err)
+    } finally {
+      setUploading(false)
+    }
+  }, [])
 
   const handleColumnValueFilterChange = useCallback(
     (canonicalId: string, values: Set<string> | null) => {
@@ -181,7 +215,22 @@ export function CSVViewer() {
   }, [csvData, activeFilterKeys, columnSearch, columnValueFilters, sortConfig, multiSource, selectedFiles])
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e]">
+    <div
+      className="flex flex-col h-full bg-[#1e1e1e] relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag-and-drop overlay */}
+      {(dragActive || uploading) && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none"
+             style={{ background: 'rgba(0,122,204,0.12)', border: '2px dashed #007acc' }}>
+          <span className="text-[#007acc] text-base font-semibold">
+            {uploading ? 'Adding files…' : 'Drop CSV files to add'}
+          </span>
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center gap-3 px-4 h-10 border-b border-[#3c3c3c] bg-[#252526] flex-shrink-0">
         <FileSelector files={files} selectedFiles={selectedFiles} onToggle={toggleFile} />
