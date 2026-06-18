@@ -5,6 +5,15 @@ import type { Column, RowMeta, SortConfig } from '../../../types'
 import { PLATFORM_COLORS } from '../../../types'
 import { computeRowValidity, VALIDITY_COLORS } from './validityUtils'
 
+function formatDuration(val: string): string | null {
+  const s = parseInt(val, 10)
+  if (isNaN(s) || s < 0) return null
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
 interface DataTableProps {
   columns: Column[]
   rows: string[][]
@@ -266,17 +275,29 @@ export function DataTable({
               ? 'rgba(34,197,94,0.18)'   // green — correct
               : 'rgba(239,68,68,0.18)'   // red — incorrect
           }
+          const isDuration = col.displayLabel.toLowerCase().includes('duration')
+          const durationFmt = isDuration && cell !== '' ? formatDuration(cell) : null
           return (
             <td
               key={col.colId}
-              title={cell}
+              title={durationFmt ? `${cell}s (${durationFmt})` : cell}
               className="border border-[#3c3c3c] px-2 text-gray-300 max-w-[14rem]"
               style={cellBg ? { backgroundColor: cellBg } : undefined}
             >
               {wrapText ? (
-                <div className="whitespace-normal break-words py-1 text-[11px]">{cell}</div>
+                <div className="whitespace-normal break-words py-1 text-[11px]">
+                  {cell}
+                  {durationFmt && (
+                    <span className="ml-1 text-gray-500">({durationFmt})</span>
+                  )}
+                </div>
               ) : (
-                <div className="truncate">{cell}</div>
+                <div className="truncate">
+                  {cell}
+                  {durationFmt && (
+                    <span className="ml-1 text-gray-500">({durationFmt})</span>
+                  )}
+                </div>
               )}
             </td>
           )

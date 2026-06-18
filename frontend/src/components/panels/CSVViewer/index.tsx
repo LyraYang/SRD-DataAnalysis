@@ -6,6 +6,7 @@ import { FilterSidebar } from './FilterSidebar'
 import { DataTable } from './DataTable'
 import type { CSVData, SortConfig } from '../../../types'
 import { PLATFORM_COLORS } from '../../../types'
+import { computeRowValidity } from './validityUtils'
 
 export function CSVViewer() {
   const [files, setFiles] = useState<string[]>([])
@@ -85,6 +86,19 @@ export function CSVViewer() {
     }
     return indices.length
   }, [csvData, columnValueFilters])
+
+  // Count of non-critical rows after value filters — shown in header when hideInvalid is active
+  const validRowCount = useMemo(() => {
+    if (!csvData || !hideInvalid) return null
+    let indices = Array.from({ length: csvData.rows.length }, (_, i) => i)
+    for (const [canonicalId, allowedVals] of columnValueFilters) {
+      if (allowedVals.size === 0) return 0
+      const col = csvData.columns.find((c) => c.canonicalId === canonicalId)
+      if (!col) continue
+      indices = indices.filter((i) => allowedVals.has(csvData.rows[i]?.[col.index] ?? ''))
+    }
+    return indices.filter((i) => computeRowValidity(csvData.rows[i] ?? [], csvData.columns).level !== 'critical').length
+  }, [csvData, hideInvalid, columnValueFilters])
 
   const multiSource = (csvData?.sources?.length ?? 0) > 1
 
@@ -230,6 +244,9 @@ export function CSVViewer() {
 
         {csvData && (
           <span className="text-[11px] text-gray-500">
+            {hideInvalid && validRowCount !== null && (
+              <span className="text-[#4ade80] mr-1">{validRowCount} valid ·{' '}</span>
+            )}
             {filteredRowCount !== csvData.totalRows ? (
               <span>
                 <span className="text-gray-300">{filteredRowCount}</span>

@@ -54,6 +54,14 @@ export function computeRowValidity(row: string[], columns: Column[]): ValidityRe
     quantGroups.get(key)!.set(col.subKey, col)
   }
 
+  // Critical: quant columns exist but none are filled in any unit
+  if (quantGroups.size > 0) {
+    const anyFilled = Array.from(quantGroups.values()).some((skMap) =>
+      Array.from(skMap.values()).some((col) => (row[col.index] ?? '') !== ''),
+    )
+    if (!anyFilled) criticals.push('No responses in any unit')
+  }
+
   for (const [key, skMap] of quantGroups) {
     const [unit, sg] = key.split(':')
     const sgShort = sg.replace('-Quant', '')  // "High", "Low", "Mid"
