@@ -64,7 +64,7 @@ export interface SortConfig {
   dir: 'asc' | 'desc'
 }
 
-export type PanelType = 'csv-viewer'
+export type PanelType = 'csv-viewer' | 'summary'
 
 export interface OpenPanel {
   instanceId: string

@@ -10,6 +10,10 @@ export const PANEL_REGISTRY: Record<PanelType, PanelMeta> = {
     title: 'CSV Viewer',
     description: 'View and filter raw Qualtrics CSV responses',
   },
+  'summary': {
+    title: 'Summary',
+    description: 'Validity counts, unit distribution, and demographics',
+  },
 }
 
-export const AVAILABLE_PANELS: PanelType[] = ['csv-viewer']
+export const AVAILABLE_PANELS: PanelType[] = ['csv-viewer', 'summary']

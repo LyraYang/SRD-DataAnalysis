@@ -27,6 +27,7 @@ interface DataTableProps {
   onColumnValueFilterChange: (canonicalId: string, values: Set<string> | null) => void
   wrapText: boolean
   hideInvalid: boolean
+  showNotes: boolean
 }
 
 export function DataTable({
@@ -42,6 +43,7 @@ export function DataTable({
   onColumnValueFilterChange,
   wrapText,
   hideInvalid,
+  showNotes,
 }: DataTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [openFilterColId, setOpenFilterColId] = useState<string | null>(null)
@@ -205,12 +207,12 @@ export function DataTable({
   // Frozen-column left offsets (px)
   const PLAT_W = 8    // platform stripe (only when multiSource)
   const DOT_W  = 20   // validity dot column
-  const NOTE_W = 120  // notes column
+  const NOTE_W = 160  // notes column (wider to show question text)
   const dotLeft     = multiSource ? PLAT_W : 0
   const noteLeft    = dotLeft + DOT_W
-  const rownumLeft  = noteLeft + NOTE_W
+  const rownumLeft  = showNotes ? noteLeft + NOTE_W : noteLeft
 
-  const colSpanTotal = visibleColumns.length + (multiSource ? 4 : 3)
+  const colSpanTotal = visibleColumns.length + (multiSource ? 4 : 3) + (showNotes ? 0 : -1)
 
   const renderRow = (origIdx: number, visIdx: number) => {
     const row = rows[origIdx]
@@ -220,9 +222,17 @@ export function DataTable({
     const platformColor = meta ? PLATFORM_COLORS[meta.platform] : undefined
     const validity = rowValidity[origIdx]
     const dotColor = VALIDITY_COLORS[validity.level]
-    const noteText = validity.notes.join('; ')
+    const noteLines = validity.notes
+    const { criticalCount, partialCount } = validity
+    const summaryParts: string[] = []
+    if (criticalCount > 0) summaryParts.push(`${criticalCount} critical`)
+    if (partialCount > 0) summaryParts.push(`${partialCount} partial`)
+    const summaryLine = summaryParts.length > 0 ? summaryParts.join(', ') : ''
+    const noteTooltip = summaryLine
+      ? `${summaryLine}\n${noteLines.join('\n')}`
+      : 'No issues'
     // Gray for minor notes on passing (green) rows so they don't alarm
-    const noteColor = validity.level === 'ok' && noteText ? '#6b7280' : dotColor
+    const noteColor = validity.level === 'ok' && noteLines.length > 0 ? '#6b7280' : dotColor
     return (
       <tr
         key={origIdx}
@@ -239,26 +249,29 @@ export function DataTable({
         <td
           className="sticky z-10 border border-[#3c3c3c] text-center"
           style={{ left: dotLeft, width: DOT_W, backgroundColor: rowBg }}
-          title={noteText || 'No issues'}
+          title={noteTooltip}
         >
           <span style={{ color: dotColor, fontSize: 10, lineHeight: 1 }}>●</span>
         </td>
         {/* Notes */}
-        <td
-          className="sticky z-10 border border-[#3c3c3c] px-1"
-          style={{ left: noteLeft, width: NOTE_W, maxWidth: NOTE_W, backgroundColor: rowBg }}
-          title={noteText}
-        >
-          {wrapText ? (
-            <div className="whitespace-normal break-words py-1 text-[9px]" style={{ color: noteColor }}>
-              {noteText}
-            </div>
-          ) : (
-            <div className="truncate text-[9px]" style={{ color: noteColor }}>
-              {noteText}
-            </div>
-          )}
-        </td>
+        {showNotes && (
+          <td
+            className="sticky z-10 border border-[#3c3c3c] px-1"
+            style={{ left: noteLeft, width: NOTE_W, maxWidth: NOTE_W, backgroundColor: rowBg }}
+            title={noteTooltip}
+          >
+            {noteLines.length === 0 ? null : (
+              <div className="py-1 text-[9px] break-words whitespace-normal" style={{ color: noteColor }}>
+                {summaryLine && (
+                  <div className="font-semibold mb-0.5">{summaryLine}</div>
+                )}
+                {noteLines.map((n, i) => (
+                  <div key={i} className="mb-0.5 last:mb-0 pl-1 border-l border-current opacity-80">{n}</div>
+                ))}
+              </div>
+            )}
+          </td>
+        )}
         <td
           className="sticky z-10 border border-[#3c3c3c] px-2 text-center text-gray-600"
           style={{ left: rownumLeft, backgroundColor: rowBg }}
@@ -328,12 +341,14 @@ export function DataTable({
                 title="Validity"
               />
               {/* Notes */}
-              <th
-                className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] px-1 py-1 text-left text-[9px] font-semibold text-gray-500 uppercase tracking-wider"
-                style={{ left: noteLeft, width: NOTE_W, minWidth: NOTE_W, maxWidth: NOTE_W }}
-              >
-                Notes
-              </th>
+              {showNotes && (
+                <th
+                  className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] px-1 py-1 text-left text-[9px] font-semibold text-gray-500 uppercase tracking-wider"
+                  style={{ left: noteLeft, width: NOTE_W, minWidth: NOTE_W, maxWidth: NOTE_W }}
+                >
+                  Notes
+                </th>
+              )}
               <th
                 className="sticky z-30 border border-[#3c3c3c] bg-[#2d2d30] px-2 py-2 text-center text-gray-500"
                 style={{ left: rownumLeft, width: 40, minWidth: 40 }}
@@ -377,8 +392,8 @@ export function DataTable({
                           )}
                         </div>
                         {subtitle && (
-                          <div className="mt-0.5 truncate text-[9px] text-gray-500 font-normal">
-                            {subtitle.length > 60 ? subtitle.slice(0, 60) + '…' : subtitle}
+                          <div className="mt-0.5 text-[9px] text-gray-500 font-normal whitespace-normal break-words">
+                            {subtitle}
                           </div>
                         )}
                       </button>

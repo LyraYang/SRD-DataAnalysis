@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { CSVViewer } from '../panels/CSVViewer'
+import { SummaryPanel } from '../panels/SummaryPanel'
 import { PANEL_REGISTRY, AVAILABLE_PANELS } from '../panels/registry'
 import type { OpenPanel, PanelType } from '../../types'
 
@@ -14,6 +15,8 @@ function renderPanel(type: PanelType) {
   switch (type) {
     case 'csv-viewer':
       return <CSVViewer />
+    case 'summary':
+      return <SummaryPanel />
   }
 }
 

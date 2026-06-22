@@ -67,21 +67,22 @@ Every row has a **coloured dot** and a **Notes** column that flag data quality i
 
 | Colour | Meaning |
 |--------|---------|
-| 🟢 Green | No critical issues; fewer than 3 partial issues |
-| 🟡 Yellow | No critical issues; 3–5 partial issues |
-| 🔴 Red | Any critical issue, or more than 5 partial issues |
+| 🟢 Green | No critical issues and fewer than 5 partial issues (notes still shown in grey) |
+| 🟡 Yellow | No critical issues but 5 or more partial issues |
+| 🔴 Red | Any critical issue |
 
 **Critical issues (always red):**
-- All 13 quantitative answers in a condition are identical (straight-lining)
+- All three assertiveness levels (High/Low/Mid) within a unit are all straight-lined (all 13 answers identical)
 - Any open-text field contains only the word "test"
 - No quantitative responses filled in any unit
 
 **Partial issues:**
+- Only some (but not all) assertiveness levels in a unit are straight-lined
 - Attention check answered incorrectly (blank is ignored)
-- Audio check answered but value ≠ 8803
+- Audio check answered but value ≠ 8803 (spaces and separators are stripped before comparing, so "88 03" or "88-03" pass)
 - Contradictory scale responses within a condition, e.g. Clarity ≤ 2 but Decision Confidence ≥ 4
 
-Green rows with 1–2 partial issues still show those notes in muted grey so they are visible without raising alarm.
+Cross-check conflict notes include both question texts and ratings, e.g. `Unit A High: Clarity↔Confidence (2↔4) — "I clearly understood what the robot wanted me to do" [2] vs "I felt confident about what action to take" [4]`.
 
 **Hide invalid** checkbox (header bar) — removes all red rows from the table. The header shows a green count of remaining valid rows, e.g. *142 valid · 200 rows*.
 

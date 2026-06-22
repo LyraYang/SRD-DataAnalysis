@@ -22,6 +22,7 @@ export function CSVViewer() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [wrapText, setWrapText] = useState(true)
   const [hideInvalid, setHideInvalid] = useState(false)
+  const [showNotes, setShowNotes] = useState(true)
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null)
   const [columnValueFilters, setColumnValueFilters] = useState<Map<string, Set<string>>>(new Map())
 
@@ -276,6 +277,18 @@ export function CSVViewer() {
             <span className={hideInvalid ? 'text-[#f87171]' : undefined}>Hide invalid</span>
           </label>
         )}
+        {/* Show/hide notes column */}
+        {csvData && (
+          <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showNotes}
+              onChange={(e) => setShowNotes(e.target.checked)}
+              className="accent-[#007acc] w-3 h-3"
+            />
+            Notes
+          </label>
+        )}
 
         {csvData && (
           <button
@@ -367,6 +380,7 @@ export function CSVViewer() {
               onColumnValueFilterChange={handleColumnValueFilterChange}
               wrapText={wrapText}
               hideInvalid={hideInvalid}
+              showNotes={showNotes}
             />
           )}
         </div>
