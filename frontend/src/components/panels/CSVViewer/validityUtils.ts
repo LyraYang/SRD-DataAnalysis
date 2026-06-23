@@ -153,17 +153,33 @@ export function computeRowValidity(row: string[], columns: Column[]): ValidityRe
     }
   }
 
-  // --- Partial: audio check — strip spaces and separators before comparing ---
+  // --- Critical: audio check must be answered and equal 8803 ---
   const audioCol = columns.find(
     (c) => c.groupId === 'Pre-Survey' && c.displayLabel.toLowerCase().includes('audio'),
   )
   if (audioCol) {
     const raw = (row[audioCol.index] ?? '').trim()
-    if (raw !== '') {
+    if (raw === '') {
+      criticals.push('Audio check not answered')
+    } else {
       const normalized = raw.replace(/[\s\-_.,]/g, '')
       if (normalized !== '8803') {
-        partials.push(`Audio: "${raw}" (expected 8803)`)
+        criticals.push(`Audio check failed: "${raw}" (expected 8803)`)
       }
+    }
+  }
+
+  // --- Partial: duration below 15 minutes (900 seconds) ---
+  const durationCol = columns.find(
+    (c) => c.groupId === 'Metadata' && c.displayLabel.toLowerCase().includes('duration'),
+  )
+  if (durationCol) {
+    const raw = (row[durationCol.index] ?? '').trim()
+    const seconds = parseInt(raw, 10)
+    if (!isNaN(seconds) && seconds < 900) {
+      const mins = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      partials.push(`Short duration: ${mins}m ${secs}s (minimum 15 min)`)
     }
   }
 

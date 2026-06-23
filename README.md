@@ -1,13 +1,10 @@
 # SRD Data Analysis
 
-A browser-based viewer for Qualtrics CSV exports from the SRD study.
-Supports both Sona and Prolific formats, and Spring 2026 / Summer formats.
+Browser-based viewer for Qualtrics CSV exports from the SRD study. Supports Sona and Prolific formats, Spring 2026 and Summer formats.
 
 ---
 
-## Building
-
-### Web version (development)
+## Development
 
 ```bash
 # Terminal 1 — backend
@@ -15,81 +12,139 @@ pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --port 8001
 
 # Terminal 2 — frontend
-cd frontend
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
 
-Open http://localhost:5173. Place CSV files in the `data/` folder at the project root.
+Open `http://localhost:5173`. Place CSV files in `data/`.
 
----
+## Distributable build
 
-### Local distributable (share with others)
-
-**One-time setup:**
 ```bash
 pip install pyinstaller
 cd frontend && npm install && cd ..
-```
-
-**Build:**
-```bash
 python build_dist.py
 ```
 
-Output is `dist/DataAnalysis/`. Zip that folder and distribute it.
-
-Recipients double-click `DataAnalysis.exe` — a browser window opens automatically at `http://127.0.0.1:8765`.
-No Python, Node.js, or other software required on their machine.
+Output: `dist/DataAnalysis/`. Zip and share. Recipients double-click `DataAnalysis.exe` — no Python or Node required.
 
 ---
 
-## Features
+## Panels
 
-### Loading data
-- **Select files** from the dropdown in the header bar. Multiple files can be selected simultaneously and their rows are merged into a unified column layout.
-- **Drag and drop** one or more CSV files onto the app window to upload them instantly (local version) or add them to the `data/` folder (web version). The file list refreshes automatically.
-- The platform (Sona / Prolific) is detected from the filename and shown as a colored badge. A thin stripe on each row indicates which source it came from when multiple files are loaded.
+Use **+ Add Panel** to open panels side-by-side or stacked. Two types available:
 
-### Column visibility
-- The **filter sidebar** on the left organises columns by group (Metadata, Pre-Survey, Unit A–G). Click the arrow next to any group to expand it.
-- Quant sub-groups (High / Low / Mid) expand further into four **construct categories**: Manipulation Check, Performance, Affect / Social Perception, Preference. Toggle individual categories on or off.
-- Use the **search box** at the top of the sidebar to find columns by label or question ID.
-- **All / None** buttons toggle all columns at once.
+| Panel | Purpose |
+|-------|---------|
+| **CSV Viewer** | Browse, filter, sort, and export raw responses |
+| **Summary** | Validity counts, unit distribution, demographics |
 
-### Filtering and sorting
-- Click the **▾ button** on any column header to filter by specific values. Multiple value filters can be active simultaneously; click the orange "✕ N filters" button in the header bar to clear all.
-- Click a **column header** to sort ascending; click again for descending; a third click clears the sort.
-- The row count in the header bar updates to reflect active filters.
+---
 
-### Validity indicator
-Every row has a **coloured dot** and a **Notes** column that flag data quality issues:
+## CSV Viewer
 
-| Colour | Meaning |
-|--------|---------|
-| 🟢 Green | No critical issues and fewer than 5 partial issues (notes still shown in grey) |
-| 🟡 Yellow | No critical issues but 5 or more partial issues |
+**Loading data** — select files from the header dropdown (multiple files merge into one unified layout). Drag and drop CSVs onto the window to upload. Use the **+** button beside the dropdown to pick files from disk. The **✕** button beside each file in the dropdown deletes it.
+
+**Columns** — the left sidebar groups columns by Metadata, Pre-Survey, and Units A–G. Quant sub-groups expand into construct categories (Manipulation Check, Performance, Affect, Preference). Use the search box or All/None buttons to filter.
+
+**Filtering & sorting** — click **▾** on any column header to filter by value; click the header label to sort. Clear all value filters with the orange "✕ N filters" button.
+
+**Validity** — every row is flagged 🟢 / 🟡 / 🔴:
+
+| Colour | Condition |
+|--------|-----------|
+| 🟢 Green | No critical issues; fewer than 5 partial issues |
+| 🟡 Yellow | No critical issues; 5 or more partial issues |
 | 🔴 Red | Any critical issue |
 
-**Critical issues (always red):**
-- All three assertiveness levels (High/Low/Mid) within a unit are all straight-lined (all 13 answers identical)
+**Critical issues:**
+- Straight-lining all three assertiveness levels (High + Low + Mid) within a unit (all 13 answers identical)
 - Any open-text field contains only the word "test"
 - No quantitative responses filled in any unit
+- Audio check not answered or wrong — expected `8803`; spaces and separators (` - _ . ,`) are stripped before comparing, so `88 03` and `88-03` both pass
 
 **Partial issues:**
-- Only some (but not all) assertiveness levels in a unit are straight-lined
-- Attention check answered incorrectly (blank is ignored)
-- Audio check answered but value ≠ 8803 (spaces and separators are stripped before comparing, so "88 03" or "88-03" pass)
-- Contradictory scale responses within a condition, e.g. Clarity ≤ 2 but Decision Confidence ≥ 4
+- Straight-lining only some (not all) assertiveness levels within a unit
+- Attention check answered incorrectly (blank is ignored). Correct answers per unit:
 
-Cross-check conflict notes include both question texts and ratings, e.g. `Unit A High: Clarity↔Confidence (2↔4) — "I clearly understood what the robot wanted me to do" [2] vs "I felt confident about what action to take" [4]`.
+  | Unit | A | B | C | D | E | F | G |
+  |------|---|---|---|---|---|---|---|
+  | Answer | Paris | Apple | Dog | Yellow | Flower | 12 | 4 |
 
-**Hide invalid** checkbox (header bar) — removes all red rows from the table. The header shows a green count of remaining valid rows, e.g. *142 valid · 200 rows*.
+- Duration below 15 minutes (note shows actual time, e.g. `Short duration: 8m 32s`)
+- Contradictory scale ratings within a condition. Conflict = item A rated ≤ 2 **and** item B rated ≥ 4 (Likert: 1 Strongly Disagree → 5 Strongly Agree). Checked pairs:
 
-### Display options
-- **Wrap** toggle: wraps cell text so long responses are fully readable. When off, virtual scrolling is used for performance on large datasets.
-- **Duration** columns (e.g. "Duration (in seconds)") automatically show a converted `H:MM:SS` value next to the raw seconds.
-- **Assertiveness Rank** columns are highlighted green (correct) or red (incorrect) based on the expected answer from `Evaluation Unit Assertiveness Ranks.txt`.
+  | Pair | Conflict means… |
+  |------|-----------------|
+  | Clarity (Q2) ↔ Confidence (Q8) | Didn't understand the instruction but felt confident about the action |
+  | Clarity (Q2) ↔ Appropriateness (Q7) | Didn't understand but found the style appropriate |
+  | Trust (Q4) ↔ Compliance (Q5) | Wouldn't trust the robot but would follow its instructions |
+  | Competence (Q9) ↔ Trust (Q4) | Robot seemed incompetent but they trusted it |
+  | Safety (Q10) ↔ Compliance (Q5) | Instruction didn't feel safe but they'd follow it |
+  | Safety (Q10) ↔ Trust (Q4) | Instruction didn't feel safe but they trusted the robot |
 
-### Export
-Click **Export** in the header bar to download the currently visible, filtered, and sorted data as an Excel file. Only visible columns and filtered rows are included.
+  Cross-checks run independently for each assertiveness level (High / Low / Mid) within every unit. Notes include question text and ratings, e.g. `Unit A High: Clarity↔Confidence (2↔4)`.
+
+  *Likert normalisation:* text responses are mapped to numbers (the label "Disagree" is treated as 2 / Somewhat Disagree due to a known survey mislabelling).
+
+Toggle **Hide invalid** to remove red rows. Toggle **Notes** to show/hide the per-row issue column.
+
+**Display** — **Wrap** toggle for text wrapping. Duration shown as H:MM:SS. Assertiveness Rank cells highlighted green/red vs expected answer. Summary sub-columns order: Most Appropriate → Best → Least Appropriate → Worst → Difference.
+
+**Export** — downloads visible, filtered, sorted data as Excel.
+
+---
+
+## Summary Panel
+
+Select files the same way as CSV Viewer. Four sections:
+
+1. **Response Validity** — counts and % of valid / partial valid / invalid responses.
+2. **Unit Distribution** — how many responses (all) contain data for each unit A–G.
+3. **Demographics** (valid + partial only) — gender, age groups (<20, 20–29, 30–39, 40–49, 50+), English proficiency, perceptual ability. Each bar shows its own n; missing responses shown as "Not answered." Columns auto-detected by keyword from Pre-Survey group.
+4. **Valid Responses Per Unit** — same as section 2 but restricted to valid + partial valid rows.
+
+---
+
+## 中文说明
+
+### 构建与运行
+
+**开发模式：**
+```bash
+# 后端
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8001
+
+# 前端（另开终端）
+cd frontend && npm install && npm run dev
+```
+打开 `http://localhost:5173`，将 CSV 文件放入项目根目录下的 `data/` 文件夹。
+
+**打包分发（供他人直接使用）：**
+```bash
+pip install pyinstaller
+cd frontend && npm install && cd ..
+python build_dist.py
+```
+生成 `dist/DataAnalysis/` 文件夹，压缩后发给他人。对方双击 `DataAnalysis.exe` 即可使用，无需安装 Python 或 Node。
+
+### 主要功能
+
+- **多文件合并查看**：从下拉框选择一或多个 CSV 文件，数据自动合并为统一列布局；支持拖拽上传，也可点击 **+** 按钮从本地选择文件添加；点击文件旁的 **✕** 可删除。
+
+- **灵活筛选与排序**：左侧侧边栏按组（元数据、前测、各评估单元 A–G）管理列的显示与隐藏；点击列头可排序；点击 **▾** 按钮可按值筛选。
+
+- **数据有效性标注**：每行自动标注 🟢 有效 / 🟡 部分有效 / 🔴 无效。
+  - **严重问题（红色）**：同一单元三个断言级别（High/Low/Mid）全部 straight-line（13 题答案完全相同）· 开放文本仅填"test" · 所有单元均无定量作答 · 音频检查未作答或答案有误（正确答案 8803，比较前自动去除空格与分隔符）。
+  - **部分问题（≥5 条变黄）**：仅部分断言级别 straight-line · 注意力检查答错（空白忽略，各单元正确答案：A=Paris、B=Apple、C=Dog、D=Yellow、E=Flower、F=12、G=4）· 作答时长不足 15 分钟 · 同一条件内量表评分矛盾（某题 ≤ 2 而另一题 ≥ 4，具体检查对如下）：
+    - 清晰度（Q2）↔ 信心（Q8）：听不懂指令却很有把握
+    - 清晰度（Q2）↔ 适切性（Q7）：听不懂却觉得表达方式恰当
+    - 信任（Q4）↔ 服从（Q5）：不信任机器人却会遵从指令
+    - 能力（Q9）↔ 信任（Q4）：觉得机器人不称职却信任它
+    - 安全感（Q10）↔ 服从（Q5）：觉得不安全却会照做
+    - 安全感（Q10）↔ 信任（Q4）：觉得不安全却信任机器人
+  - 量表归一化：文字选项映射为数字（1=强烈不同意…5=强烈同意），已知误标"Disagree"统一视为 2。
+
+- **汇总面板**：统计有效/部分有效/无效人数，展示各评估单元的作答分布，以及有效作答者的人口统计信息（性别、年龄段、英语水平、感知能力）。
+
+- **导出**：将当前可见、已筛选、已排序的数据导出为 Excel 文件。

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, type ReactNode } from 'react'
-import { fetchFiles, fetchCombinedData } from '../../../api/csv'
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
+import { fetchFiles, fetchCombinedData, uploadCSV, deleteFile } from '../../../api/csv'
 import type { CSVData } from '../../../types'
 import { FileSelector } from '../CSVViewer/FileSelector'
 import { computeRowValidity } from '../CSVViewer/validityUtils'
@@ -134,18 +134,36 @@ function computeSummary(csvData: CSVData) {
   const ageCol = columns.find(
     c => c.groupId === 'Pre-Survey' && c.displayLabel.toLowerCase().includes('age'),
   )
+  const englishCol = columns.find(
+    c => c.groupId === 'Pre-Survey' && (
+      c.displayLabel.toLowerCase().includes('english') ||
+      c.displayLabel.toLowerCase().includes('proficiency')
+    ),
+  )
+  const perceptualCol = columns.find(
+    c => c.groupId === 'Pre-Survey' && (
+      c.displayLabel.toLowerCase().includes('perceptual') ||
+      c.displayLabel.toLowerCase().includes('hearing')
+    ),
+  )
 
-  const genderMap  = new Map<string, number>()
-  const ageMap     = new Map<string, number>()
-  let ageUnknown   = 0
+  const genderMap     = new Map<string, number>()
+  const ageMap        = new Map<string, number>()
+  const englishMap    = new Map<string, number>()
+  const perceptualMap = new Map<string, number>()
+  let ageUnknown = 0
+
+  function countCategorical(map: Map<string, number>, val: string) {
+    const v = val.trim()
+    if (v) map.set(v, (map.get(v) ?? 0) + 1)
+  }
 
   for (const i of usableIndices) {
     const row = rows[i]
 
-    if (genderCol) {
-      const g = (row[genderCol.index] ?? '').trim()
-      if (g) genderMap.set(g, (genderMap.get(g) ?? 0) + 1)
-    }
+    if (genderCol)     countCategorical(genderMap,     row[genderCol.index]     ?? '')
+    if (englishCol)    countCategorical(englishMap,    row[englishCol.index]    ?? '')
+    if (perceptualCol) countCategorical(perceptualMap, row[perceptualCol.index] ?? '')
 
     if (ageCol) {
       const age = parseInt(row[ageCol.index] ?? '', 10)
@@ -158,14 +176,34 @@ function computeSummary(csvData: CSVData) {
     }
   }
 
-  const genderData = Array.from(genderMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, value]) => ({ label, value }))
+  function sortedData(map: Map<string, number>) {
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))
+  }
 
-  const ageData = [
+  function mapTotal(map: Map<string, number>) {
+    let t = 0; for (const v of map.values()) t += v; return t
+  }
+
+  const usableCount = usableIndices.length
+
+  function withBlank(data: { label: string; value: number }[], n: number) {
+    const blank = usableCount - n
+    return blank > 0 ? [...data, { label: 'Not answered', value: blank }] : data
+  }
+
+  const genderN     = mapTotal(genderMap)
+  const englishN    = mapTotal(englishMap)
+  const perceptualN = mapTotal(perceptualMap)
+  const ageN        = mapTotal(ageMap) + ageUnknown
+
+  const genderData     = withBlank(sortedData(genderMap), genderN)
+  const englishData    = withBlank(sortedData(englishMap), englishN)
+  const perceptualData = withBlank(sortedData(perceptualMap), perceptualN)
+
+  const ageData = withBlank([
     ...AGE_BUCKETS.filter(b => ageMap.has(b)).map(b => ({ label: b, value: ageMap.get(b)! })),
     ...(ageUnknown > 0 ? [{ label: 'Unknown', value: ageUnknown }] : []),
-  ]
+  ], ageN)
 
   const presentUnits = UNIT_LETTERS.filter(u => u in unitDist)
 
@@ -174,13 +212,17 @@ function computeSummary(csvData: CSVData) {
     validCount,
     partialCount,
     invalidCount,
-    usableCount: usableIndices.length,
+    usableCount,
     unitDist,
     unitValidDist,
-    genderData,
-    ageData,
-    hasGender: !!genderCol,
-    hasAge: !!ageCol,
+    genderData,     genderN,
+    ageData,        ageN,
+    englishData,    englishN,
+    perceptualData, perceptualN,
+    hasGender:     !!genderCol,
+    hasAge:        !!ageCol,
+    hasEnglish:    !!englishCol,
+    hasPerceptual: !!perceptualCol,
     presentUnits,
   }
 }
@@ -215,6 +257,26 @@ export function SummaryPanel() {
       prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f],
     )
 
+  const handleUploadFile = useCallback(async (file: File) => {
+    setError(null)
+    try {
+      await uploadCSV(file)
+      setFiles(await fetchFiles())
+    } catch (err) {
+      setError(`Upload failed: ${(err as Error).message}`)
+    }
+  }, [])
+
+  const handleDeleteFile = useCallback(async (filename: string) => {
+    try {
+      await deleteFile(filename)
+      setFiles(await fetchFiles())
+      setSelectedFiles((prev) => prev.filter((f) => f !== filename))
+    } catch (err) {
+      setError(`Delete failed: ${(err as Error).message}`)
+    }
+  }, [])
+
   const summary = useMemo(
     () => (csvData ? computeSummary(csvData) : null),
     [csvData],
@@ -224,7 +286,7 @@ export function SummaryPanel() {
     <div className="flex flex-col h-full bg-[#1e1e1e]">
       {/* Header bar */}
       <div className="flex items-center gap-3 px-3 h-10 bg-[#252526] border-b border-[#3c3c3c] flex-shrink-0">
-        <FileSelector files={files} selectedFiles={selectedFiles} onToggle={toggleFile} />
+        <FileSelector files={files} selectedFiles={selectedFiles} onToggle={toggleFile} onDelete={handleDeleteFile} onUpload={handleUploadFile} />
         {loading && <span className="text-[11px] text-gray-500">Loading…</span>}
         {error   && <span className="text-[11px] text-[#f87171] truncate">{error}</span>}
       </div>
@@ -269,22 +331,15 @@ export function SummaryPanel() {
           )}
 
           {/* ── 3. Demographics — valid + partial valid ── */}
-          {summary.usableCount > 0 && (summary.hasGender || summary.hasAge) && (
+          {summary.usableCount > 0 && (summary.hasGender || summary.hasAge || summary.hasEnglish || summary.hasPerceptual) && (
             <Section title={`Demographics — Valid & Partial Valid (n = ${summary.usableCount})`}>
               {summary.hasGender && (
                 <div className="mb-5">
-                  <div className="text-[11px] text-gray-400 mb-2">Gender</div>
+                  <div className="text-[11px] text-gray-400 mb-2">Gender <span className="text-gray-600">(n = {summary.genderN})</span></div>
                   {summary.genderData.length > 0 ? (
                     <div className="space-y-1.5">
                       {summary.genderData.map(d => (
-                        <HBar
-                          key={d.label}
-                          label={d.label}
-                          value={d.value}
-                          max={summary.usableCount}
-                          color="#a78bfa"
-                          showPct
-                        />
+                        <HBar key={d.label} label={d.label} value={d.value} max={summary.usableCount} color={d.label === 'Not answered' ? '#4b5563' : '#a78bfa'} showPct />
                       ))}
                     </div>
                   ) : (
@@ -294,23 +349,46 @@ export function SummaryPanel() {
               )}
 
               {summary.hasAge && (
-                <div>
-                  <div className="text-[11px] text-gray-400 mb-2">Age Groups</div>
+                <div className="mb-5">
+                  <div className="text-[11px] text-gray-400 mb-2">Age Groups <span className="text-gray-600">(n = {summary.ageN})</span></div>
                   {summary.ageData.length > 0 ? (
                     <div className="space-y-1.5">
                       {summary.ageData.map(d => (
-                        <HBar
-                          key={d.label}
-                          label={d.label}
-                          value={d.value}
-                          max={summary.usableCount}
-                          color="#34d399"
-                          showPct
-                        />
+                        <HBar key={d.label} label={d.label} value={d.value} max={summary.usableCount} color={d.label === 'Not answered' ? '#4b5563' : '#34d399'} showPct />
                       ))}
                     </div>
                   ) : (
                     <p className="text-[11px] text-gray-600">No age data in selected files.</p>
+                  )}
+                </div>
+              )}
+
+              {summary.hasEnglish && (
+                <div className="mb-5">
+                  <div className="text-[11px] text-gray-400 mb-2">English Proficiency <span className="text-gray-600">(n = {summary.englishN})</span></div>
+                  {summary.englishData.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {summary.englishData.map(d => (
+                        <HBar key={d.label} label={d.label} value={d.value} max={summary.usableCount} color={d.label === 'Not answered' ? '#4b5563' : '#fb923c'} showPct />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-600">No English proficiency data in selected files.</p>
+                  )}
+                </div>
+              )}
+
+              {summary.hasPerceptual && (
+                <div>
+                  <div className="text-[11px] text-gray-400 mb-2">Perceptual Ability <span className="text-gray-600">(n = {summary.perceptualN})</span></div>
+                  {summary.perceptualData.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {summary.perceptualData.map(d => (
+                        <HBar key={d.label} label={d.label} value={d.value} max={summary.usableCount} color={d.label === 'Not answered' ? '#4b5563' : '#38bdf8'} showPct />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-600">No perceptual ability data in selected files.</p>
                   )}
                 </div>
               )}

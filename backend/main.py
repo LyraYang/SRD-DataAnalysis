@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import csv
@@ -73,7 +73,7 @@ SUBGROUP_LABELS = {
 GROUP_ORDER = ["Metadata", "Pre-Survey", "Quality"] + [f"Unit_{u}" for u in UNIT_LETTERS]
 
 # Desired display order for Summary sub-keys within each unit
-SUMMARY_KEY_ORDER = ["most-appropriate", "least-appropriate", "best", "worst", "difference"]
+SUMMARY_KEY_ORDER = ["most-appropriate", "best", "least-appropriate", "worst", "difference"]
 
 # The three sub-groups whose 13 questions are split into construct categories
 QUANT_SUBGROUPS = {"High-Quant", "Low-Quant", "Mid-Quant"}
@@ -601,12 +601,23 @@ def get_csv_data(filename: str):
     }
 
 
-@app.post("/api/upload")
-async def upload_csv(request: Request, filename: str = "upload.csv"):
-    if not filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+@app.delete("/api/files/{filename}")
+def delete_file(filename: str):
     safe_name = Path(filename).name
-    (DATA_DIR / safe_name).write_bytes(await request.body())
+    filepath = DATA_DIR / safe_name
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    filepath.unlink()
+    return {"deleted": safe_name}
+
+
+@app.post("/api/upload")
+async def upload_csv(file: UploadFile):
+    original_name = file.filename or "upload.csv"
+    if not original_name.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+    safe_name = Path(original_name).name
+    (DATA_DIR / safe_name).write_bytes(await file.read())
     return {"filename": safe_name}
 
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { fetchFiles, fetchCombinedData, uploadCSV } from '../../../api/csv'
+import { fetchFiles, fetchCombinedData, uploadCSV, deleteFile } from '../../../api/csv'
 import { FileSelector } from './FileSelector'
 import { FilterSidebar } from './FilterSidebar'
 import { DataTable } from './DataTable'
@@ -68,6 +68,29 @@ export function CSVViewer() {
     if (dragDepth.current === 0) setDragActive(false)
   }
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault() }
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    setUploading(true)
+    setError(null)
+    try {
+      await uploadCSV(file)
+      setFiles(await fetchFiles())
+    } catch (err) {
+      setError(`Upload failed: ${(err as Error).message}`)
+    } finally {
+      setUploading(false)
+    }
+  }, [])
+
+  const handleDeleteFile = useCallback(async (filename: string) => {
+    try {
+      await deleteFile(filename)
+      setFiles(await fetchFiles())
+      setSelectedFiles((prev) => prev.filter((f) => f !== filename))
+    } catch (err) {
+      setError(`Delete failed: ${(err as Error).message}`)
+    }
+  }, [])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -234,7 +257,7 @@ export function CSVViewer() {
       )}
       {/* Header bar */}
       <div className="flex items-center gap-3 px-4 h-10 border-b border-[#3c3c3c] bg-[#252526] flex-shrink-0">
-        <FileSelector files={files} selectedFiles={selectedFiles} onToggle={toggleFile} />
+        <FileSelector files={files} selectedFiles={selectedFiles} onToggle={toggleFile} onDelete={handleDeleteFile} onUpload={handleUploadFile} />
 
         {/* Platform badge — always visible once data is loaded */}
         {csvData && csvData.sources.length > 0 && (
