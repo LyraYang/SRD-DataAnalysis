@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { CSVViewer } from '../panels/CSVViewer'
 import { SummaryPanel } from '../panels/SummaryPanel'
 import { PANEL_REGISTRY, AVAILABLE_PANELS } from '../panels/registry'
-import type { OpenPanel, PanelType } from '../../types'
+import { deleteFile, fetchFiles, uploadCSV } from '../../api/csv'
+import type { FileCatalogProps, OpenPanel, PanelType } from '../../types'
 
 // Layout is a 2D grid: array of columns, each column is an array of panels (rows)
 interface Column {
@@ -11,12 +12,12 @@ interface Column {
   panels: OpenPanel[]
 }
 
-function renderPanel(type: PanelType) {
+function renderPanel(type: PanelType, fileCatalog: FileCatalogProps) {
   switch (type) {
     case 'csv-viewer':
-      return <CSVViewer />
+      return <CSVViewer {...fileCatalog} />
     case 'summary':
-      return <SummaryPanel />
+      return <SummaryPanel {...fileCatalog} />
   }
 }
 
@@ -33,8 +34,36 @@ export function WorkspaceLayout() {
     { id: 'col-default', panels: [{ instanceId: 'csv-viewer-default', type: 'csv-viewer' }] },
   ])
   const [menuOpen, setMenuOpen] = useState(false)
+  const [files, setFiles] = useState<string[]>([])
+  const [filesVersion, setFilesVersion] = useState(0)
+
+  const refreshFiles = useCallback(async () => {
+    const nextFiles = await fetchFiles()
+    setFiles(nextFiles)
+    setFilesVersion((v) => v + 1)
+  }, [])
+
+  useEffect(() => {
+    refreshFiles().catch((e) => console.error('Failed to load file list:', e))
+  }, [refreshFiles])
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    await uploadCSV(file)
+    await refreshFiles()
+  }, [refreshFiles])
+
+  const handleDeleteFile = useCallback(async (filename: string) => {
+    await deleteFile(filename)
+    await refreshFiles()
+  }, [refreshFiles])
 
   const totalPanels = columns.reduce((s, c) => s + c.panels.length, 0)
+  const fileCatalog: FileCatalogProps = {
+    files,
+    filesVersion,
+    onUploadFile: handleUploadFile,
+    onDeleteFile: handleDeleteFile,
+  }
 
   // Add a new column to the right of colIdx (or at end if colIdx = -1)
   const addColumn = (afterColIdx: number, type: PanelType) => {
@@ -76,7 +105,7 @@ export function WorkspaceLayout() {
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="flex items-center gap-3 px-4 h-10 bg-[#323233] border-b border-[#3c3c3c] flex-shrink-0">
+      <div className="relative z-[100] flex items-center gap-3 px-4 h-10 bg-[#323233] border-b border-[#3c3c3c] flex-shrink-0">
         <span className="text-sm font-semibold text-gray-200 tracking-wide">
           SRD Data Analysis
         </span>
@@ -90,8 +119,8 @@ export function WorkspaceLayout() {
           </button>
           {menuOpen && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-8 z-20 w-52 bg-[#252526] border border-[#3c3c3c] rounded shadow-xl py-1">
+              <div className="fixed inset-0 z-[90]" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-8 z-[110] w-52 bg-[#252526] border border-[#3c3c3c] rounded shadow-xl py-1">
                 {AVAILABLE_PANELS.map((type) => (
                   <button
                     key={type}
@@ -186,7 +215,7 @@ export function WorkspaceLayout() {
                               </button>
                             )}
                           </div>
-                          <div className="flex-1 min-h-0">{renderPanel(panel.type)}</div>
+                          <div className="flex-1 min-h-0">{renderPanel(panel.type, fileCatalog)}</div>
                         </div>
                       </Panel>
                     </>

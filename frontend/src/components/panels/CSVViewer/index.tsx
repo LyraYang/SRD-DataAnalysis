@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { fetchFiles, fetchCombinedData, uploadCSV, deleteFile } from '../../../api/csv'
+import { fetchCombinedData } from '../../../api/csv'
 import { FileSelector } from './FileSelector'
 import { FilterSidebar } from './FilterSidebar'
 import { DataTable } from './DataTable'
-import type { CSVData, SortConfig } from '../../../types'
+import type { CSVData, FileCatalogProps, SortConfig } from '../../../types'
 import { PLATFORM_COLORS } from '../../../types'
 import { computeRowValidity } from './validityUtils'
 
-export function CSVViewer() {
-  const [files, setFiles] = useState<string[]>([])
+export function CSVViewer({ files, filesVersion, onUploadFile, onDeleteFile }: FileCatalogProps) {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [csvData, setCsvData] = useState<CSVData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -27,10 +26,8 @@ export function CSVViewer() {
   const [columnValueFilters, setColumnValueFilters] = useState<Map<string, Set<string>>>(new Map())
 
   useEffect(() => {
-    fetchFiles()
-      .then(setFiles)
-      .catch((e) => console.error('Failed to load file list:', e))
-  }, [])
+    setSelectedFiles((prev) => prev.filter((f) => files.includes(f)))
+  }, [files])
 
   useEffect(() => {
     if (selectedFiles.length === 0) {
@@ -49,7 +46,7 @@ export function CSVViewer() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [selectedFiles])
+  }, [selectedFiles, filesVersion])
 
   const toggleFile = (filename: string) => {
     setSelectedFiles((prev) =>
@@ -73,24 +70,22 @@ export function CSVViewer() {
     setUploading(true)
     setError(null)
     try {
-      await uploadCSV(file)
-      setFiles(await fetchFiles())
+      await onUploadFile(file)
     } catch (err) {
       setError(`Upload failed: ${(err as Error).message}`)
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, [onUploadFile])
 
   const handleDeleteFile = useCallback(async (filename: string) => {
     try {
-      await deleteFile(filename)
-      setFiles(await fetchFiles())
+      await onDeleteFile(filename)
       setSelectedFiles((prev) => prev.filter((f) => f !== filename))
     } catch (err) {
       setError(`Delete failed: ${(err as Error).message}`)
     }
-  }, [])
+  }, [onDeleteFile])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -102,14 +97,13 @@ export function CSVViewer() {
     if (csvFiles.length === 0) return
     setUploading(true)
     try {
-      for (const file of csvFiles) await uploadCSV(file)
-      setFiles(await fetchFiles())
+      for (const file of csvFiles) await onUploadFile(file)
     } catch (err) {
-      console.error('Upload failed:', err)
+      setError(`Upload failed: ${(err as Error).message}`)
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, [onUploadFile])
 
   const handleColumnValueFilterChange = useCallback(
     (canonicalId: string, values: Set<string> | null) => {

@@ -71,6 +71,13 @@ export interface OpenPanel {
   type: PanelType
 }
 
+export interface FileCatalogProps {
+  files: string[]
+  filesVersion: number
+  onUploadFile: (file: File) => Promise<void>
+  onDeleteFile: (filename: string) => Promise<void>
+}
+
 export const PLATFORM_COLORS: Record<string, string> = {
   Sona: '#4fc3f7',
   Prolific: '#ffb74d',

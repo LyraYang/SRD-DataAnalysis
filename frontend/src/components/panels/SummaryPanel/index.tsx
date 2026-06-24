@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
-import { fetchFiles, fetchCombinedData, uploadCSV, deleteFile } from '../../../api/csv'
-import type { CSVData } from '../../../types'
+import { fetchCombinedData } from '../../../api/csv'
+import type { CSVData, FileCatalogProps } from '../../../types'
 import { FileSelector } from '../CSVViewer/FileSelector'
 import { computeRowValidity } from '../CSVViewer/validityUtils'
 
@@ -231,16 +231,15 @@ function computeSummary(csvData: CSVData) {
 // Panel component
 // ---------------------------------------------------------------------------
 
-export function SummaryPanel() {
-  const [files, setFiles]               = useState<string[]>([])
+export function SummaryPanel({ files, filesVersion, onUploadFile, onDeleteFile }: FileCatalogProps) {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [csvData, setCsvData]           = useState<CSVData | null>(null)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState<string | null>(null)
 
   useEffect(() => {
-    fetchFiles().then(setFiles).catch(() => {})
-  }, [])
+    setSelectedFiles((prev) => prev.filter((f) => files.includes(f)))
+  }, [files])
 
   useEffect(() => {
     if (selectedFiles.length === 0) { setCsvData(null); return }
@@ -250,7 +249,7 @@ export function SummaryPanel() {
       .then(setCsvData)
       .catch(e => setError((e as Error).message))
       .finally(() => setLoading(false))
-  }, [selectedFiles])
+  }, [selectedFiles, filesVersion])
 
   const toggleFile = (f: string) =>
     setSelectedFiles(prev =>
@@ -260,22 +259,20 @@ export function SummaryPanel() {
   const handleUploadFile = useCallback(async (file: File) => {
     setError(null)
     try {
-      await uploadCSV(file)
-      setFiles(await fetchFiles())
+      await onUploadFile(file)
     } catch (err) {
       setError(`Upload failed: ${(err as Error).message}`)
     }
-  }, [])
+  }, [onUploadFile])
 
   const handleDeleteFile = useCallback(async (filename: string) => {
     try {
-      await deleteFile(filename)
-      setFiles(await fetchFiles())
+      await onDeleteFile(filename)
       setSelectedFiles((prev) => prev.filter((f) => f !== filename))
     } catch (err) {
       setError(`Delete failed: ${(err as Error).message}`)
     }
-  }, [])
+  }, [onDeleteFile])
 
   const summary = useMemo(
     () => (csvData ? computeSummary(csvData) : null),
